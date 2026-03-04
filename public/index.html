@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="ru">
+
+<head>
+    <meta charset="UTF-8">
+    <title>KittyCord</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+    <div id="auth-screen" class="auth-container">
+        <div class="auth-box">
+            <h2>Вход в KittyCord</h2>
+            <input type="text" id="authUsername" placeholder="Имя пользователя" autocomplete="off">
+            <input type="password" id="authPassword" placeholder="Пароль">
+            <div class="auth-buttons">
+                <button id="loginBtn">Войти</button>
+                <button id="registerBtn">Регистрация</button>
+            </div>
+            <p id="authError" class="error-text"></p>
+        </div>
+    </div>
+
+    <div id="app-container" class="app-container" style="display: none;">
+        <nav class="servers-panel">
+            <div class="server-icon kitty-home active" id="btnHome" data-tooltip="Друзья и ЛС">🏠<span class="badge"
+                    id="badge-home" style="display: none;">0</span></div>
+            <div id="quickDMsList" class="quick-dms"></div>
+            <div class="server-separator"></div>
+            <div id="myServersList"
+                style="display: flex; flex-direction: column; gap: 12px; width: 100%; align-items: center;"></div>
+            <div class="server-icon" id="btnGeneral" data-tooltip="Общий сервер (Мир)">🌍</div>
+            <div class="server-icon add-server" id="btnAddServer" data-tooltip="Добавить сервер"
+                style="color: var(--accent); background: rgba(255,255,255,0.05); font-weight: bold;">+</div>
+        </nav>
+
+        <aside class="channels-panel">
+            <div class="channels-header server-header-clickable" id="serverHeader">
+                <h2 id="panelTitle"
+                    style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex-grow: 1;">Главная</h2>
+                <span id="serverHeaderChevron" style="display: none; font-size: 12px;">▼</span>
+            </div>
+
+            <div id="serverDropdown" class="server-dropdown" style="display: none;">
+                <div class="dropdown-item" id="dropdownInvite" style="color: var(--accent);">📨 Позвать друзей</div>
+                <div class="dropdown-item" id="dropdownSettings" style="display: none;">⚙️ Настройки сервера</div>
+                <div class="dropdown-item" id="dropdownCreateChannel" style="display: none;">📁 Создать канал</div>
+                <div class="server-separator" id="dropdownSeparator" style="margin: 4px 0; width: 100%; display: none;">
+                </div>
+                <div class="dropdown-item" id="dropdownLeave" style="color: #F04747;">🚪 Покинуть сервер</div>
+            </div>
+
+            <div class="channels-list">
+                <div id="serverChannels" style="display: none;">
+                    <div class="section-title"
+                        style="display: flex; justify-content: space-between; align-items: center;">
+                        Текстовые каналы <span id="addChannelBtn" class="add-channel-icon" style="display: none;"
+                            title="Создать канал">+</span>
+                    </div>
+                    <div id="serverChannelsList"></div>
+                </div>
+                <div id="dmSection">
+                    <div class="channel active" id="btnFriendsMenu"><span class="name">👋 Друзья</span></div>
+                    <div class="section-title">Личные сообщения</div>
+                    <div id="dmList" class="dm-list"></div>
+                </div>
+            </div>
+            <div class="user-panel" id="myProfileBtn">
+                <div class="user-avatar-wrap" style="width:36px;height:36px;">
+                    <div class="user-avatar" id="myAvatarDisplay">🐱</div>
+                </div>
+                <div class="user-info"><span class="username" id="myUsername">...</span></div>
+            </div>
+        </aside>
+
+        <main class="chat-area" id="chatArea" style="display: none;">
+            <header class="chat-header">
+                <h3 id="chatTitle"># общий-чат</h3>
+                <button id="showPinsBtn" class="action-btn" style="margin-left:auto; font-size:18px;"
+                    title="Закрепленные сообщения">📌</button>
+            </header>
+            <div class="messages-container" id="chat"></div>
+            <div id="replyBar" class="reply-bar" style="display: none;">
+                <div class="reply-bar-content"><span style="font-weight:bold; color:var(--accent);">Ответ для <span
+                            id="replyingToUser"></span>:</span><span id="replyingToText"
+                        style="color:var(--text-muted); margin-left:10px; font-size:12px;"></span></div>
+                <span class="close-btn-inline" id="cancelReplyBtn">&times;</span>
+            </div>
+            <div class="message-input-area" id="chatInputArea">
+                <label for="fileInput" class="action-btn">➕</label><input type="file" id="fileInput"
+                    accept="image/*, audio/*, video/*" style="display: none;">
+                <button id="emojiBtn" class="action-btn">😀</button>
+                <div id="mentionDropdown" class="mention-dropdown" style="display: none;"></div>
+                <div id="emojiDropdown" class="emoji-dropdown" style="display: none;"></div>
+                <input type="text" id="msgInput" placeholder="Написать..." class="message-input" autocomplete="off">
+                <button id="micBtn" class="action-btn mic-btn">🎤</button>
+                <button id="sendBtn" class="send-button">Отправить</button>
+            </div>
+            <div id="chatNoAccessArea"
+                style="display: none; padding: 20px; text-align: center; color: #F04747; font-weight: bold; background: var(--bg-panel);">
+                У вас нет прав писать в этот канал.</div>
+        </main>
+
+        <aside class="members-panel" id="membersPanel" style="display: none;">
+            <div class="members-list-container" id="rightMembersList"></div>
+        </aside>
+
+        <main class="friends-area" id="friendsArea">
+            <header class="chat-header friends-header">
+                <h3>👋 Друзья</h3>
+                <div class="server-separator-v"></div>
+                <div class="friends-tabs"><button class="friend-tab active" data-tab="all">Все</button><button
+                        class="friend-tab" data-tab="pending">Ожидающие <span id="pendingBadge" class="badge-inline"
+                            style="display: none;">0</span></button><button class="friend-tab add-friend-tab"
+                        data-tab="add">Добавить друга</button></div>
+            </header>
+            <div class="friends-content">
+                <div id="tab-all" class="friend-tab-content">
+                    <h4 class="section-title">Все друзья</h4>
+                    <div id="friendsListContainer" class="list-container"></div>
+                </div>
+                <div id="tab-pending" class="friend-tab-content" style="display: none;">
+                    <h4 class="section-title">Запросы в друзья</h4>
+                    <div id="pendingListContainer" class="list-container"></div>
+                </div>
+                <div id="tab-add" class="friend-tab-content" style="display: none;">
+                    <h3>Добавить друга</h3>
+                    <p class="subtext">Введите имя пользователя KittyCord.</p>
+                    <div class="add-friend-box"><input type="text" id="addFriendInput" placeholder="Имя пользователя"
+                            class="message-input" autocomplete="off"><button id="sendFriendRequestBtn"
+                            class="send-button">Запрос</button></div>
+                    <p id="addFriendMsg" class="msg-text"></p>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <div id="serverModal" class="modal" style="display: none;">
+        <div class="modal-content profile-card" style="padding: 24px; text-align: center; width: 400px;"><span
+                class="close-btn" id="closeServerModal" style="background: rgba(0,0,0,0.5);">&times;</span>
+            <h2 style="color: var(--text-main); margin-bottom: 20px;">Серверы</h2>
+            <div
+                style="background: var(--bg-servers); padding: 16px; border-radius: 12px; margin-bottom: 20px; border: 1px solid var(--bg-hover);">
+                <h3 style="color: var(--text-main); font-size: 16px; margin-bottom: 12px; text-align: left;">Создать
+                    свой сервер</h3><input type="text" id="newServerName" placeholder="Название сервера"
+                    class="message-input" style="width: 100%; margin-bottom: 12px; background: var(--bg-panel);"><button
+                    id="createServerBtn" class="send-button" style="width: 100%;">Создать</button>
+            </div>
+            <div
+                style="background: var(--bg-servers); padding: 16px; border-radius: 12px; border: 1px solid var(--bg-hover);">
+                <h3 style="color: var(--text-main); font-size: 16px; margin-bottom: 12px; text-align: left;">
+                    Присоединиться по ссылке</h3><input type="text" id="inviteCodeInput" placeholder="Ссылка или код"
+                    class="message-input" style="width: 100%; margin-bottom: 12px; background: var(--bg-panel);"><button
+                    id="joinServerBtn" class="send-button"
+                    style="width: 100%; background: var(--bg-hover);">Войти</button>
+            </div>
+        </div>
+    </div>
+    <div id="createChannelModal" class="modal" style="display: none;">
+        <div class="modal-content profile-card" style="padding: 24px; text-align: left; width: 350px;"><span
+                class="close-btn" id="closeChannelModal">&times;</span>
+            <h2 style="margin-bottom: 15px; text-align: center;">Создать канал</h2><input type="text"
+                id="newChannelName" placeholder="Название канала" class="message-input"
+                style="width: 100%; margin-bottom: 15px;"><label
+                style="display: flex; align-items: center; gap: 8px; color: var(--text-main); font-weight: bold; cursor: pointer; margin-bottom: 10px;"><input
+                    type="checkbox" id="isPrivateChannel"
+                    style="width: 18px; height: 18px; accent-color: var(--accent);"> 🔒 Приватный канал</label>
+            <div id="channelRolesSelect"
+                style="display: none; background: var(--bg-servers); padding: 10px; border-radius: 8px; margin-bottom: 15px; max-height: 100px; overflow-y: auto;">
+            </div><button id="submitChannelBtn" class="send-button" style="width: 100%;">Создать</button>
+        </div>
+    </div>
+
+    <div id="channelSettingsModal" class="modal" style="display: none;">
+        <div class="modal-content profile-card"
+            style="padding: 24px; text-align: left; width: 450px; display:flex; flex-direction:column; min-height: 400px;">
+            <span class="close-btn" id="closeChannelSettingsModal">&times;</span>
+            <h2 style="margin-bottom: 15px; text-align: center;">Настройки канала</h2>
+            <div class="friends-tabs" style="margin-bottom: 20px; justify-content: center;">
+                <button class="settings-tab active" id="chTabBtn-general">Обзор</button>
+                <button class="settings-tab" id="chTabBtn-perms">Права доступа</button>
+            </div>
+            <div id="chSettingsTab-general" class="settings-tab-content" style="flex-grow:1;">
+                <input type="hidden" id="editChannelId">
+                <input type="text" id="editChannelName" placeholder="Новое название" class="message-input"
+                    style="width: 100%; margin-bottom: 15px;">
+            </div>
+            <div id="chSettingsTab-perms" class="settings-tab-content" style="display: none; flex-grow:1;">
+                <div style="margin-bottom:15px; display:flex; gap:10px;"><select id="addPermSelect"
+                        class="message-input" style="padding:8px; font-size:12px; flex-grow:1;">
+                        <option value="">+ Разрешить роль</option>
+                    </select><button id="addPermBtn" class="send-button" style="padding:8px 15px;">Добавить</button>
+                </div>
+                <div id="channelPermsList"
+                    style="background:var(--bg-servers); border-radius:8px; padding:10px; max-height:250px; overflow-y:auto; display:flex; flex-direction:column; gap:10px;">
+                </div>
+            </div>
+            <button id="saveChannelSettingsBtn" class="send-button" style="width: 100%; margin-top:15px;">💾 Сохранить
+                изменения</button>
+        </div>
+    </div>
+
+    <div id="serverSettingsModal" class="modal" style="display: none;">
+        <div class="modal-content profile-card" style="padding: 24px; width: 480px;">
+            <span class="close-btn" id="closeSettingsModal">&times;</span>
+            <h2 style="margin-bottom: 15px; text-align: center;">Настройки сервера</h2>
+            <div class="friends-tabs" style="margin-bottom: 20px; justify-content: center;">
+                <button class="settings-tab active" id="tabBtn-general">Общие</button>
+                <button class="settings-tab" id="tabBtn-roles">Роли</button>
+                <button class="settings-tab" id="tabBtn-members">Участники</button>
+            </div>
+            <div id="settingsTab-general" class="settings-tab-content">
+                <div class="modal-avatar-wrapper-server"
+                    style="margin: 0 auto 15px; position:relative; width:90px; height:90px; border-radius:50%; background:var(--bg-panel); display:flex; justify-content:center; align-items:center;">
+                    <div class="user-avatar" id="serverIconPreview" style="font-size:32px;">🏰</div><label
+                        for="serverIconUpload" class="edit-icon-round" style="bottom: 0;">✎</label><input type="file"
+                        id="serverIconUpload" accept="image/*" style="display: none;">
+                </div>
+                <input type="text" id="editServerName" placeholder="Название сервера" class="message-input"
+                    style="width: 100%; margin-bottom: 15px;">
+                <button id="saveServerSettingsBtn" class="send-button" style="width: 100%;">💾 Сохранить</button>
+            </div>
+            <div id="settingsTab-roles" class="settings-tab-content" style="display: none;">
+                <div style="display: flex; gap: 8px; margin-bottom: 15px; flex-wrap: wrap; align-items: center;">
+                    <input type="text" id="newRoleName" placeholder="Название роли" class="message-input"
+                        style="flex-grow: 1; min-width:100px;">
+                    <div style="display:flex; flex-direction:column; gap:4px;"><label
+                            style="font-size:10px; color:var(--text-muted);">Цвет</label><input type="color"
+                            id="newRoleColor" value="#FF4DA6"
+                            style="width: 40px; height: 30px; border:none; background:none; cursor:pointer;"></div>
+                    <label
+                        style="color:var(--text-main); font-size:11px; display:flex; align-items:center; gap:4px; width:45%;"><input
+                            type="checkbox" id="newRoleManCh"> Упр. каналами</label>
+                    <label
+                        style="color:var(--text-main); font-size:11px; display:flex; align-items:center; gap:4px; width:45%;"><input
+                            type="checkbox" id="newRoleManMsg"> Упр. сообщениями</label>
+                    <button id="createRoleBtn" class="send-button" style="width:100%; margin-top:5px;">Создать
+                        роль</button>
+                </div>
+                <div id="serverRolesList"
+                    style="background: var(--bg-servers); border-radius: 8px; padding: 10px; max-height: 180px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px;">
+                </div>
+            </div>
+            <div id="settingsTab-members" class="settings-tab-content" style="display: none;">
+                <div id="serverMembersList"
+                    style="background: var(--bg-servers); border-radius: 8px; padding: 10px; max-height: 250px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px;">
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="pinsModal" class="modal" style="display: none;">
+        <div class="modal-content profile-card" style="width:450px; padding:24px; text-align:left;"><span
+                class="close-btn" id="closePinsModal">&times;</span>
+            <h2 style="margin-bottom:15px;">📌 Закрепленные</h2>
+            <div id="pinsList"
+                style="max-height:400px; overflow-y:auto; display:flex; flex-direction:column; gap:10px;"></div>
+        </div>
+    </div>
+
+    <div id="pinConfirmModal" class="modal" style="display: none;">
+        <div class="modal-content profile-card" style="padding: 24px; text-align: center; width: 320px;">
+            <h3 style="color: var(--text-main); margin-bottom: 10px;">Закрепить сообщение?</h3><label
+                style="display:flex; align-items:center; justify-content:center; gap:8px; color:var(--text-muted); font-size:14px; margin-bottom:20px; cursor:pointer;"><input
+                    type="checkbox" id="pinNotifyCb" checked
+                    style="width:16px;height:16px; accent-color:var(--accent);"> Уведомить в чате</label>
+            <div style="display: flex; gap: 12px;"><button id="cancelPinBtn" class="send-button"
+                    style="background: var(--bg-servers); color: var(--text-main); flex: 1;">Отмена</button><button
+                    id="acceptPinBtn" class="send-button" style="flex: 1;">Закрепить</button></div>
+        </div>
+    </div>
+
+    <div id="profileModal" class="modal" style="display: none;">
+        <div class="modal-content profile-card">
+            <div id="modalBanner" class="profile-banner"><span class="close-btn" id="closeModal"
+                    style="z-index: 9999;">&times;</span><label for="bannerUpload" id="changeBannerBtn"
+                    class="edit-icon" style="display: none;">📷 Изменить фон</label><input type="file" id="bannerUpload"
+                    accept="image/*" style="display: none;"></div>
+            <div class="profile-header">
+                <div class="modal-avatar-wrapper">
+                    <div class="user-avatar" id="modalAvatarPreview">🐱</div>
+                    <div class="status-indicator online" style="width: 22px; height: 22px; bottom: 0px; right: 0px;">
+                    </div>
+                    <label for="avatarUpload" id="changeAvatarBtn" class="edit-icon-round"
+                        style="display: none;">✎</label><input type="file" id="avatarUpload" accept="image/*"
+                        style="display: none;">
+                </div>
+            </div>
+            <div class="profile-body"><input type="text" id="profileDisplayName" class="profile-display-name"
+                    placeholder="Отображаемое имя" disabled autocomplete="off">
+                <div class="profile-subtext"><span id="profileUsername">@username</span><input type="text"
+                        id="profilePronouns" class="profile-pronouns" placeholder="Местоимения" disabled
+                        autocomplete="off"></div>
+                <div id="profileRolesList" style="display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px;"></div>
+                <div class="profile-custom-status-container" id="statusContainer"><span>💭</span> <input type="text"
+                        id="profileCustomStatus" class="profile-custom-status" placeholder="Установить статус..."
+                        disabled autocomplete="off"></div>
+                <div class="profile-activity-container" id="activityContainer"><span>🎮</span> <input type="text"
+                        id="profileActivity" class="profile-activity" placeholder="В какую игру играете?" disabled
+                        autocomplete="off"></div>
+                <div id="bioContainer">
+                    <div class="profile-section-title">ОБО МНЕ</div><textarea id="profileBio"
+                        placeholder="Расскажите о себе..." disabled class="bio-input"></textarea>
+                </div>
+                <div id="socialsContainer">
+                    <div class="profile-section-title">СОЦСЕТИ И ССЫЛКИ</div><textarea id="profileSocials"
+                        placeholder="VK, TG, Steam..." disabled class="bio-input socials-input"></textarea>
+                </div>
+                <div class="profile-footer">Участник KittyCord с <span id="profileRegDate"
+                        class="highlight-text">...</span></div><button id="saveBioBtn" class="send-button profile-btn"
+                    style="display: none;">💾 Сохранить изменения</button><button id="dmBtn"
+                    class="send-button profile-btn">💬 Написать сообщение</button><button id="logoutBtn"
+                    class="send-button profile-btn logout-btn" style="display: none;">Выйти из аккаунта</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="customContextMenu" class="context-menu" style="display: none;"></div>
+    <div id="toast" class="toast">Уведомление</div>
+    <div id="confirmModal" class="modal" style="display: none;">
+        <div class="modal-content profile-card" style="padding: 24px; text-align: center; width: 320px;">
+            <h3 id="confirmTitle" style="color: var(--text-main); margin-bottom: 10px; font-size: 20px;">Подтверждение
+            </h3>
+            <p id="confirmText"
+                style="color: var(--text-muted); font-size: 14px; margin-bottom: 20px; line-height: 1.4;">Вы уверены?
+            </p>
+            <div style="display: flex; gap: 12px;"><button id="cancelConfirmBtn" class="send-button"
+                    style="background: var(--bg-servers); color: var(--text-main); flex: 1;">Отмена</button><button
+                    id="acceptConfirmBtn" class="send-button" style="background: #F04747; flex: 1;">Да</button></div>
+        </div>
+    </div>
+    <div id="lightbox" class="lightbox" style="display: none;"><span class="close-lightbox"
+            id="closeLightbox">&times;</span>
+        <div class="lightbox-actions"><button id="zoomInBtn" class="action-btn zoom-btn">🔍+</button><span
+                id="zoomPercent" class="zoom-percent">100%</span><button id="zoomOutBtn"
+                class="action-btn zoom-btn">🔍-</button><a id="downloadImgBtn" href="" download
+                class="action-btn zoom-btn dl-btn">📥 Скачать</a></div><img id="lightboxImg" src=""
+            style="transform: scale(1); transition: transform 0.1s;">
+        <div id="lightboxInfo" class="lightbox-info"></div>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="script.js"></script>
+</body>
+
+</html>
