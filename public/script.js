@@ -1,4 +1,5 @@
-const socket = io();
+// ФИКС 5: Форсируем вебсокеты для моментальной скорости (без них Render тупит)
+const socket = io({ transports: ['websocket'] });
 let currentUser = null, currentAvatar = '', currentBio = '', currentChat = 'friends';
 let lastSender = null, lastMessageDate = null, activeDMs = new Set(), unreadCounts = {}, allUsers = [], pendingFriendRequests = 0;
 let myProfileData = {};
@@ -23,7 +24,6 @@ function showToast(msg, isError = false) {
     setTimeout(() => t.classList.remove('show'), 3000);
 }
 
-// ФИКС ЗВУКА: один контекст на всё приложение
 let pingAudioCtx = null;
 function playPingSound() {
     try {
@@ -91,7 +91,6 @@ function formatText(text) {
     return s;
 }
 
-// ФИКС ФОРМАТИРОВАНИЯ: функция для ПКМ меню (жирный, курсив и тд)
 window.formatInput = function (syntax, isPrefix = false) {
     if (!msgInput) return;
     const start = msgInput.selectionStart;
@@ -114,6 +113,11 @@ window.onload = async () => {
     if (msgInput) {
         msgInput.addEventListener('input', handleMentionInput);
         msgInput.addEventListener('keydown', handleMentionKeydown);
+    }
+
+    // ФИКС 11: Запрашиваем права на фоновые пуши от Windows
+    if (Notification.permission !== 'granted' && Notification.permission !== 'denied') {
+        Notification.requestPermission();
     }
 
     const savedUser = localStorage.getItem('kitty_user');
@@ -381,12 +385,7 @@ function renderChannelPerms() {
     serverRolesCache.forEach(r => { if (!currentChannelPerms.roles[r.id]) sel.insertAdjacentHTML('beforeend', `<option value="${r.id}">${r.name}</option>`); });
 }
 
-window.toggleChannelPriv = (cb) => {
-    syncChannelPermsFromDOM();
-    currentChannelPerms.everyone.view = cb.checked;
-    renderChannelPerms();
-};
-
+window.toggleChannelPriv = (cb) => { syncChannelPermsFromDOM(); currentChannelPerms.everyone.view = cb.checked; renderChannelPerms(); };
 window.removeChPerm = (id) => { syncChannelPermsFromDOM(); delete currentChannelPerms.roles[id]; renderChannelPerms(); };
 
 bindClick('addPermBtn', () => {
@@ -399,7 +398,6 @@ bindClick('addPermBtn', () => {
 
 window.openChannelSettings = (id, name, permsStrEncoded) => {
     el('editChannelId').value = id; el('editChannelName').value = name;
-
     const permsStr = decodeURIComponent(permsStrEncoded);
     try { currentChannelPerms = JSON.parse(permsStr); } catch (e) { currentChannelPerms = {}; }
     if (!currentChannelPerms.everyone) currentChannelPerms.everyone = { view: true, send: true };
@@ -417,9 +415,7 @@ window.openChannelSettings = (id, name, permsStrEncoded) => {
 
 bindChange('editIsPrivateChannel', (e) => {
     if (el('editChannelRolesSelect')) el('editChannelRolesSelect').style.display = e.target.checked ? 'block' : 'none';
-    syncChannelPermsFromDOM();
-    currentChannelPerms.everyone.view = !e.target.checked;
-    renderChannelPerms();
+    syncChannelPermsFromDOM(); currentChannelPerms.everyone.view = !e.target.checked; renderChannelPerms();
 });
 
 bindClick('chTabBtn-general', () => { document.querySelectorAll('#channelSettingsModal .settings-tab').forEach(t => t.classList.remove('active')); el('chTabBtn-general').classList.add('active'); document.querySelectorAll('#channelSettingsModal .settings-tab-content').forEach(t => t.style.display = 'none'); el('chSettingsTab-general').style.display = 'block'; });
@@ -428,17 +424,14 @@ bindClick('closeChannelSettingsModal', () => el('channelSettingsModal').style.di
 
 bindClick('saveChannelSettingsBtn', async () => {
     const id = el('editChannelId').value; const name = el('editChannelName').value.trim(); if (!name) return;
-
     syncChannelPermsFromDOM();
     if (el('editIsPrivateChannel') && el('editIsPrivateChannel').checked) { currentChannelPerms.everyone.view = false; }
-
     await fetch('/api/channels/edit', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ channel_id: id, server_id: currentServerObj.id, name, permissions: currentChannelPerms }) });
     el('channelSettingsModal').style.display = 'none'; showToast('Канал сохранен');
 });
 
 window.deleteChannel = function (channelId) { showConfirm('Удалить канал?', 'Канал и сообщения будут стерты навсегда.', 'Удалить', async () => { await fetch('/api/channels/delete', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ channel_id: channelId, server_id: currentServerObj.id }) }); }); }
 socket.on('channel_update', (data) => { if (currentServerObj && currentServerObj.id === data.server_id) window.loadServer(data.server_id); });
-
 
 function switchSettingsTab(tabName) {
     document.querySelectorAll('#serverSettingsModal .settings-tab-content').forEach(t => t.style.display = 'none');
@@ -491,12 +484,23 @@ bindClick('createRoleBtn', async () => {
 window.deleteRole = function (roleId) { showConfirm('Удалить роль?', 'Это действие нельзя отменить.', 'Удалить', async () => { await fetch('/api/roles/delete', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ role_id: roleId, server_id: currentServerObj.id }) }); }); };
 window.toggleRole = async (username, roleId) => { if (!roleId) return; const member = serverMembersCache.find(m => m.username === username); if (!member) return; let rIds = JSON.parse(member.roles || '[]'); if (rIds.includes(roleId.toString())) rIds = rIds.filter(id => id != roleId); else rIds.push(roleId.toString()); await fetch('/api/members/roles/update', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ server_id: currentServerObj.id, username, roles: rIds }) }); };
 
-function updateHomeBadge() { let total = pendingFriendRequests; for (let c in unreadCounts) { if (c !== 'general' && !c.startsWith('channel_')) total += unreadCounts[c]; } const hb = el('badge-home'); if (hb) { if (total > 0) { hb.innerText = total; hb.style.display = 'block'; } else hb.style.display = 'none'; } }
+// ФИКС 8: Красный кружок уведомлений (до 9+) на иконке приложения
+function updateHomeBadge() {
+    let total = pendingFriendRequests;
+    for (let c in unreadCounts) { if (c !== 'general' && !c.startsWith('channel_')) total += unreadCounts[c]; }
+    const hb = el('badge-home');
+    if (hb) { if (total > 0) { hb.innerText = total; hb.style.display = 'block'; } else hb.style.display = 'none'; }
+
+    if (navigator.setAppBadge) {
+        if (total > 0) navigator.setAppBadge(total > 9 ? 9 : total).catch(console.error);
+        else navigator.clearAppBadge().catch(console.error);
+    }
+}
+
 bindClick('btnHome', () => { currentServerObj = null; el('membersPanel').style.display = 'none'; el('serverHeaderChevron').style.display = 'none'; el('btnHome').classList.add('active'); el('btnGeneral').classList.remove('active'); document.querySelectorAll('.server-icon').forEach(e => e.classList.remove('active')); el('serverChannels').style.display = 'none'; el('dmSection').style.display = 'block'; el('panelTitle').innerText = 'Главная'; openFriendsMenu(); });
 bindClick('btnGeneral', () => { currentServerObj = null; el('membersPanel').style.display = 'none'; el('serverHeaderChevron').style.display = 'none'; el('btnHome').classList.remove('active'); el('btnGeneral').classList.add('active'); document.querySelectorAll('.server-icon').forEach(e => e.classList.remove('active')); el('serverChannels').style.display = 'block'; el('dmSection').style.display = 'none'; el('panelTitle').innerText = 'Kitty Server'; if (el('addChannelBtn')) el('addChannelBtn').style.display = 'none'; el('serverChannelsList').innerHTML = `<div class="channel" onclick="window.loadChat('general', true)" id="ui-general"><span class="name"># общий-чат</span></div>`; window.loadChat('general', true); });
 function openFriendsMenu() { currentChat = 'friends'; document.querySelectorAll('.channel, .dm-user').forEach(e => e.classList.remove('active')); el('btnFriendsMenu').classList.add('active'); el('chatArea').style.display = 'none'; el('friendsArea').style.display = 'flex'; fetchFriends(); window.cancelReply(); }
 
-// ФИКС ЛЕВОЙ ПАНЕЛИ: ПРИНУДИТЕЛЬНЫЙ ПЕРЕХОД НА ГЛАВНУЮ ПРИ ОТКРЫТИИ ЛС
 window.loadChat = function (chatName, canSend = true) {
     currentChat = chatName;
     if (chatName === 'general') { el('chatTitle').innerText = '# общий-чат'; el('membersPanel').style.display = 'none'; }
@@ -505,7 +509,6 @@ window.loadChat = function (chatName, canSend = true) {
         const uData = allUsers.find(u => u.username === chatName) || { display_name: chatName };
         el('chatTitle').innerText = `ЛС: @${uData.display_name || chatName}`;
 
-        // Жестко сбрасываем серверное меню
         el('membersPanel').style.display = 'none';
         currentServerObj = null;
         document.querySelectorAll('.server-icon').forEach(e => e.classList.remove('active'));
@@ -531,7 +534,7 @@ window.loadChat = function (chatName, canSend = true) {
     socket.emit('get_history', { username: currentUser, chatWith: currentChat });
 };
 
-function showUnreadDMBubble(username, avatarData) { const container = el('quickDMsList'); if (el(`quick-dm-${username}`)) return; if (container.children.length >= 15) container.removeChild(container.lastChild); const avatarHTML = (avatarData && avatarData.startsWith('data:image')) ? `<img src="${avatarData}">` : username.charAt(0).toUpperCase(); container.insertAdjacentHTML('afterbegin', `<div class="server-icon" id="quick-dm-${username}" data-tooltip="${username}" onclick="window.loadChat('${username}')"><div class="user-avatar">${avatarHTML}</div><span class="quick-dm-close" onclick="event.stopPropagation(); window.closeDM('${username}')">&times;</span><span class="badge" id="quick-badge-${username}" style="position:absolute;bottom:-2px;right:-2px;transform:scale(0.8);display:none;z-index:20;">0</span></div>`); }
+function showUnreadDMBubble(username, avatarData) { const container = el('quickDMsList'); if (el(`quick-dm-${username}`)) return; if (container.children.length >= 15) container.removeChild(container.lastChild); const avatarHTML = (avatarData && avatarData.startsWith('data:image')) ? `<img src="${avatarData}">` : username.charAt(0).toUpperCase(); container.insertAdjacentHTML('afterbegin', `<div class="server-icon" id="quick-dm-${username}" data-tooltip="${username}" onclick="window.loadChat('${username}')"><div class="user-avatar">${avatarHTML}</div><span class="quick-dm-close" onclick="event.stopPropagation(); window.closeDM('${username}')">&times;</span><span class="badge" id="quick-badge-${username}" style="display:none;z-index:20;">0</span></div>`); }
 function removeUnreadDMBubble(username) { const elem = el(`quick-dm-${username}`); if (elem) elem.remove(); }
 window.closeDM = (username) => { removeUnreadDMBubble(username); const dm = el(`dm-${username}`); if (dm) dm.remove(); activeDMs.delete(username); if (currentChat === username) el('btnHome').click(); };
 function addToDMList(username, avatarData, isActive = false) { if (username === 'general' || username === currentUser || username.startsWith('channel_')) return; if (activeDMs.has(username)) { if (isActive) { el(`dm-${username}`).classList.add('active'); } if (avatarData) updateAvatarDisplay(`dm-avatar-${username}`, avatarData, username); return; } const uData = allUsers.find(u => u.username === username); const displayName = uData?.display_name || username; activeDMs.add(username); el('dmList').insertAdjacentHTML('afterbegin', `<div class="dm-user ${isActive ? 'active' : ''}" id="dm-${username}" onclick="window.loadChat('${username}')"><div class="user-avatar-wrap" style="width:32px;height:32px;"><div class="user-avatar dm-avatar" id="dm-avatar-${username}">🐱</div></div><span class="name">${displayName}</span><span class="dm-close-btn" onclick="event.stopPropagation(); window.closeDM('${username}')">&times;</span><span class="badge" id="badge-${username}" style="display:none;">0</span></div>`); fetch(`/api/user/${username}`).then(r => r.json()).then(d => { if (d.success) updateAvatarDisplay(`dm-avatar-${username}`, d.avatar, username); }); }
@@ -549,6 +552,12 @@ function incrementBadge(chatId, isPing = false, avatarData = null, serverId = nu
         const b2 = el(`quick-badge-${chatId}`); if (b2) { b2.innerText = unreadCounts[chatId]; b2.style.display = 'block'; }
     }
     updateHomeBadge(); playPingSound();
+
+    // ФИКС 11: Системные Push-уведомления от Windows, если окно свернуто
+    if (!document.hasFocus() && Notification.permission === "granted") {
+        const title = isPing ? "Упоминание на сервере" : "Новое личное сообщение";
+        new Notification(title, { body: "Зайдите в KittyCord, чтобы прочитать!", icon: avatarData || '' });
+    }
 }
 function clearBadge(chatId) {
     unreadCounts[chatId] = 0; const b1 = el(`badge-${chatId}`); if (b1) { b1.innerText = '0'; b1.style.display = 'none'; }
@@ -568,6 +577,8 @@ window.friendAction = async (req, rec, action) => { await fetch('/api/friends/ac
 socket.on('friend_update', (data) => { if (data.user === currentUser) fetchFriends(); });
 
 bindClick('closeModal', () => el('profileModal').style.display = 'none');
+
+// ФИКС 4: Выдача ролей прямо через профиль юзера
 window.openProfile = async (username, defaultAvatar) => {
     const isMe = username === currentUser; const data = await (await fetch(`/api/user/${username}`)).json(); const u = data.success ? data : {};
     el('profileDisplayName').value = u.display_name || username; el('profileUsername').innerText = `@${username}`; el('profilePronouns').value = u.pronouns || ''; el('profileCustomStatus').value = u.custom_status || ''; el('profileActivity').value = u.activity || ''; el('profileBio').value = u.bio || ''; el('profileSocials').value = u.social_links || '';
@@ -578,8 +589,31 @@ window.openProfile = async (username, defaultAvatar) => {
     el('profilePronouns').style.display = (!isMe && !u.pronouns) ? 'none' : 'inline-block'; el('statusContainer').style.display = (!isMe && !u.custom_status) ? 'none' : 'flex'; el('activityContainer').style.display = (!isMe && !u.activity) ? 'none' : 'flex'; el('bioContainer').style.display = (!isMe && !u.bio) ? 'none' : 'block'; el('socialsContainer').style.display = (!isMe && !u.social_links) ? 'none' : 'block';
     el('changeAvatarBtn').style.display = isMe ? 'flex' : 'none'; el('changeBannerBtn').style.display = isMe ? 'flex' : 'none'; el('logoutBtn').style.display = isMe ? 'block' : 'none'; el('saveBioBtn').style.display = isMe ? 'block' : 'none'; el('dmBtn').style.display = isMe ? 'none' : 'block';
     el('dmBtn').onclick = () => { el('profileModal').style.display = 'none'; window.loadChat(username); };
+
     const prList = el('profileRolesList'); prList.innerHTML = '';
-    if (currentServerObj && serverMembersCache.length > 0) { const mem = serverMembersCache.find(m => m.username === username); if (mem && mem.roles) { const rIds = JSON.parse(mem.roles); rIds.forEach(id => { const roleObj = serverRolesCache.find(r => r.id == id); if (roleObj) prList.insertAdjacentHTML('beforeend', `<div class="role-pill" style="border-color:${roleObj.color};"><div class="role-pill-color" style="background:${roleObj.color};"></div><span style="color:${roleObj.color};">${roleObj.name}</span></div>`); }); } }
+    if (currentServerObj && serverMembersCache.length > 0) {
+        const mem = serverMembersCache.find(m => m.username === username);
+        let memRoles = [];
+        let iCanManageRoles = (currentServerObj.owner === currentUser); // Выдавать роли может только овнер
+
+        if (mem && mem.roles) {
+            memRoles = JSON.parse(mem.roles);
+            memRoles.forEach(id => {
+                const roleObj = serverRolesCache.find(r => r.id == id);
+                if (roleObj) {
+                    const delBtn = iCanManageRoles ? `<span style="cursor:pointer; margin-left:6px; opacity:0.7;" onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=0.7" onclick="window.toggleRole('${username}', ${roleObj.id}); setTimeout(()=>window.openProfile('${username}', '${defaultAvatar}'), 300);">&times;</span>` : '';
+                    prList.insertAdjacentHTML('beforeend', `<div class="role-pill" style="border-color:${roleObj.color};"><div class="role-pill-color" style="background:${roleObj.color};"></div><span style="color:${roleObj.color};">${roleObj.name}</span>${delBtn}</div>`);
+                }
+            });
+        }
+
+        if (iCanManageRoles) {
+            let addRoleHtml = `<div style="margin-top: 8px;"><select style="background:var(--bg-servers); color:white; border:1px solid var(--bg-hover); border-radius:4px; font-size:12px; padding:4px; outline:none; cursor:pointer;" onchange="window.toggleRole('${username}', this.value); this.value=''; setTimeout(()=>window.openProfile('${username}', '${defaultAvatar}'), 300);"><option value="">+ Выдать роль</option>`;
+            serverRolesCache.forEach(r => { if (!memRoles.includes(r.id.toString())) addRoleHtml += `<option value="${r.id}">${r.name}</option>`; });
+            addRoleHtml += `</select></div>`;
+            prList.insertAdjacentHTML('beforeend', addRoleHtml);
+        }
+    }
     el('profileModal').style.display = 'flex';
 };
 bindChange('avatarUpload', e => { const file = e.target.files[0]; if (!file) return; const reader = new FileReader(); reader.onload = ev => { currentAvatar = ev.target.result; updateAvatarDisplay('modalAvatarPreview', currentAvatar, currentUser); }; reader.readAsDataURL(file); });
@@ -590,7 +624,6 @@ bindClick('myProfileBtn', () => window.openProfile(currentUser, currentAvatar));
 bindClick('logoutBtn', () => { localStorage.removeItem('kitty_user'); location.reload(); });
 socket.on('profile_updated', (data) => { if (data.username === currentUser) { currentAvatar = data.avatar; myProfileData = data; el('myUsername').innerText = data.display_name || currentUser; updateAvatarDisplay('myAvatarDisplay', currentAvatar, currentUser); } const user = allUsers.find(u => u.username === data.username); if (user) Object.assign(user, data); else allUsers.push(data); if (currentChat !== 'friends') window.loadChat(currentChat); else fetchFriends(); });
 
-// ФИКС ЗУМА КОЛЕСИКОМ
 bindClick('closeLightbox', () => el('lightbox').style.display = 'none');
 function updateZoom() { el('lightboxImg').style.transform = `scale(${imgZoom})`; if (el('zoomPercent')) el('zoomPercent').innerText = Math.round(imgZoom * 100) + '%'; }
 function openLightbox(src, sender, timeStr) { imgZoom = 1; updateZoom(); el('lightboxImg').src = src; if (el('downloadImgBtn')) el('downloadImgBtn').href = src; if (el('lightboxInfo')) el('lightboxInfo').innerText = `Отправил(а): ${sender} • ${timeStr}`; el('lightbox').style.display = 'flex'; }
@@ -656,7 +689,6 @@ function appendMessage(msg, isNew = false) {
     if (!messagesContainer) return;
 
     const existing = el(`msg-${msg.id}`);
-
     let timeObj = new Date(msg.timestamp); if (isNaN(timeObj.getTime()) && typeof msg.timestamp === 'string') { timeObj = new Date(msg.timestamp.replace(' ', 'T') + 'Z'); } if (isNaN(timeObj.getTime())) timeObj = new Date();
     const timeStr = `${String(timeObj.getHours()).padStart(2, '0')}:${String(timeObj.getMinutes()).padStart(2, '0')}`; const dateStr = getNiceDate(timeObj);
 
@@ -698,7 +730,11 @@ function appendMessage(msg, isNew = false) {
     else if (msg.type === 'audio') cHTML = `<div class="custom-audio-wrapper"><button class="play-pause-btn audio-play-btn">▶</button><div class="audio-progress-container"><input type="range" class="audio-progress video-progress" value="0" min="0" max="100" step="0.1"></div><span class="audio-time">0:00</span><button class="audio-dots-btn" onclick="window.openAudioMenu(this, event)">⋮</button><audio id="audio-${msg.id}" src="${safeContent}" preload="auto" style="display:none;"></audio></div>`;
     else cHTML = `<div class="message-text">${formatText(safeContent)}</div>`;
 
-    const aName = msg.display_name || msg.sender; const roleColor = getUserTopRole(msg.sender)?.color || 'var(--accent)';
+    const aName = msg.display_name || msg.sender;
+
+    // ФИКС 7: Стандартный цвет, если у человека нет роли 
+    const roleColor = getUserTopRole(msg.sender)?.color || 'var(--text-main)';
+
     let replyHTML = msg.reply_author ? `<div class="reply-badge">Ответ <span style="font-weight:bold;color:var(--text-main);">${msg.reply_author}</span>: ${msg.reply_text.substring(0, 30)}</div>` : '';
     let pinHTML = msg.is_pinned ? `<div class="pin-badge" style="font-size:10px; color:var(--accent); font-weight:bold; margin-bottom:4px;">📌 Закреплено</div>` : '';
 
@@ -810,22 +846,16 @@ function selectMention(u) {
     msgInput.focus();
 }
 
-// ФИКС ЗАГРУЗКИ ФАЙЛОВ ДЛЯ CLOUDINARY
 async function uploadFile(file, type) {
     const formData = new FormData();
-    formData.append('file', file); // Multer на сервере ждет поле 'file'
+    formData.append('file', file);
     try {
         const res = await fetch('/api/upload', { method: 'POST', body: formData });
         const data = await res.json();
         if (data.success) {
-            // Теперь data.url содержит правильную ссылку от Cloudinary
             socket.emit('send_message', { sender: currentUser, recipient: currentChat, server_id: currentServerObj ? currentServerObj.id : null, content: data.url, type: type, reply_author: replyingTo?.author || '', reply_text: replyingTo?.text || '' });
-        } else {
-            showToast('Ошибка загрузки файла!', true);
-        }
-    } catch (e) {
-        showToast('Сервер не отвечает', true);
-    }
+        } else { showToast('Ошибка загрузки файла!', true); }
+    } catch (e) { showToast('Сервер не отвечает', true); }
     window.cancelReply();
 }
 
@@ -850,7 +880,6 @@ document.addEventListener('ended', (e) => { if (e.target.tagName === 'VIDEO' || 
 window.openAudioMenu = (btn, event) => { event.stopPropagation(); const wrapper = btn.closest('.custom-audio-wrapper'); const audio = wrapper.querySelector('audio'); ctxMenu.innerHTML = `<div class="context-menu-item" onclick="window.setAudioSpeed('${audio.id}', 1)">🐌 Скорость: 1x</div><div class="context-menu-item" onclick="window.setAudioSpeed('${audio.id}', 1.5)">🏃 Скорость: 1.5x</div><div class="context-menu-item" onclick="window.setAudioSpeed('${audio.id}', 2)">🚀 Скорость: 2x</div><a href="${audio.src}" download class="context-menu-item" style="text-decoration:none; color: var(--accent);">📥 Скачать ГС</a>`; ctxMenu.style.display = 'block'; requestAnimationFrame(() => { const rect = ctxMenu.getBoundingClientRect(); let top = event.clientY; let left = event.clientX; if (top + rect.height > window.innerHeight) top -= rect.height; if (left + rect.width > window.innerWidth) left -= rect.width; ctxMenu.style.top = top + 'px'; ctxMenu.style.left = left + 'px'; }); };
 window.setAudioSpeed = (id, speed) => { const audio = el(id); if (audio) audio.playbackRate = speed; if (ctxMenu) ctxMenu.style.display = 'none'; showToast(`Скорость ГС: ${speed}x`); };
 
-// ФИКС ПКМ-МЕНЮ (КНОПКА КОПИРОВАНИЯ)
 document.addEventListener('contextmenu', e => {
     let html = '';
     const menu = el('customContextMenu'); if (!menu) return;
@@ -879,7 +908,6 @@ document.addEventListener('contextmenu', e => {
         const safeTextToCopy = rawText.replace(/'/g, "\\'").replace(/\n/g, "\\n");
         const shortText = rawText.substring(0, 30).replace(/'/g, "\\'") || 'Медиафайл';
 
-        // Кнопки ответа и копирования
         html = `<div class="context-menu-item" onclick="navigator.clipboard.writeText('${safeTextToCopy}'); showToast('Текст скопирован!')">📋 Копировать</div>`;
         html += `<div class="context-menu-item" onclick="window.startReply('${author}', '${shortText}')">↩ Ответить</div>`;
 
@@ -916,9 +944,5 @@ window.onclick = (e) => {
     if (!e.target.closest('#serverDropdown') && !e.target.closest('#serverHeader')) { const sd = el('serverDropdown'); if (sd) sd.style.display = 'none'; }
     if (!e.target.closest('.context-menu') && ctxMenu) ctxMenu.style.display = 'none';
     if (!e.target.closest('.audio-dots-btn') && !e.target.closest('.audio-menu')) document.querySelectorAll('.audio-menu').forEach(m => m.style.display = 'none');
-
-    const md = el('mentionDropdown');
-    if (md && md.style.display === 'flex' && !e.target.closest('.mention-dropdown') && e.target !== msgInput) {
-        md.style.display = 'none';
-    }
+    const md = el('mentionDropdown'); if (md && md.style.display === 'flex' && !e.target.closest('.mention-dropdown') && e.target !== msgInput) { md.style.display = 'none'; }
 };

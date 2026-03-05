@@ -2060,3 +2060,11 @@ body {
     font-size: 12px;
     cursor: pointer;
 }
+
+/* ФИКС №3: Панель настроек сервера и профиль поверх всего */
+#serverDropdown,
+#serverSettingsModal,
+#createChannelModal,
+#profileModal {
+    z-index: 99999 !important;
+}
