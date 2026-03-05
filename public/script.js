@@ -23,9 +23,16 @@ function showToast(msg, isError = false) {
     setTimeout(() => t.classList.remove('show'), 3000);
 }
 
+let pingAudioCtx = null;
 function playPingSound() {
     try {
-        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        if (!pingAudioCtx) {
+            pingAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        }
+        // Браузеры иногда "усыпляют" контекст, будим его
+        if (pingAudioCtx.state === 'suspended') pingAudioCtx.resume();
+
+        const ctx = pingAudioCtx;
         const playTone = (f, t, d) => {
             const osc = ctx.createOscillator(); const gain = ctx.createGain();
             osc.connect(gain); gain.connect(ctx.destination);
@@ -36,7 +43,7 @@ function playPingSound() {
             osc.start(ctx.currentTime + d); osc.stop(ctx.currentTime + d + t);
         };
         playTone(440, 0.4, 0); playTone(554.37, 0.4, 0.1);
-    } catch (e) { }
+    } catch (e) { console.error("Ошибка звука:", e); }
 }
 
 let confirmAction = null;
@@ -88,6 +95,28 @@ function formatText(text) {
 
     return s;
 }
+
+window.formatInput = function (syntax, isPrefix = false) {
+    if (!msgInput) return;
+    const start = msgInput.selectionStart;
+    const end = msgInput.selectionEnd;
+    const text = msgInput.value;
+    const selectedText = text.substring(start, end);
+
+    // Оборачиваем текст в символы (например **текст**) или ставим префикс (> цитата)
+    if (isPrefix) {
+        msgInput.value = text.substring(0, start) + syntax + selectedText + text.substring(end);
+    } else {
+        msgInput.value = text.substring(0, start) + syntax + selectedText + syntax + text.substring(end);
+    }
+
+    if (ctxMenu) ctxMenu.style.display = 'none';
+    msgInput.focus();
+
+    // Возвращаем курсор на место
+    const newPos = isPrefix ? end + syntax.length : end + syntax.length * 2;
+    msgInput.setSelectionRange(newPos, newPos);
+};
 
 window.onload = async () => {
     messagesContainer = el('chat');
@@ -557,7 +586,43 @@ bindClick('myProfileBtn', () => window.openProfile(currentUser, currentAvatar));
 bindClick('logoutBtn', () => { localStorage.removeItem('kitty_user'); location.reload(); });
 socket.on('profile_updated', (data) => { if (data.username === currentUser) { currentAvatar = data.avatar; myProfileData = data; el('myUsername').innerText = data.display_name || currentUser; updateAvatarDisplay('myAvatarDisplay', currentAvatar, currentUser); } const user = allUsers.find(u => u.username === data.username); if (user) Object.assign(user, data); else allUsers.push(data); if (currentChat !== 'friends') window.loadChat(currentChat); else fetchFriends(); });
 
-bindClick('closeLightbox', () => el('lightbox').style.display = 'none'); function updateZoom() { el('lightboxImg').style.transform = `scale(${imgZoom})`; el('zoomPercent').innerText = Math.round(imgZoom * 100) + '%'; } function openLightbox(src, sender, timeStr) { imgZoom = 1; updateZoom(); el('lightboxImg').src = src; el('downloadImgBtn').href = src; el('lightboxInfo').innerText = `Отправил(а): ${sender} • ${timeStr}`; el('lightbox').style.display = 'flex'; } bindClick('zoomInBtn', (e) => { e.stopPropagation(); imgZoom = Math.min(3, imgZoom + 0.25); updateZoom(); }); bindClick('zoomOutBtn', (e) => { e.stopPropagation(); imgZoom = Math.max(0.25, imgZoom - 0.25); updateZoom(); }); bindChange('lightboxImg', (e) => { e.preventDefault(); imgZoom += e.deltaY * -0.002; imgZoom = Math.min(Math.max(0.25, imgZoom), 3); updateZoom(); });
+bindClick('closeLightbox', () => el('lightbox').style.display = 'none');
+
+function updateZoom() {
+    el('lightboxImg').style.transform = `scale(${imgZoom})`;
+    if (el('zoomPercent')) el('zoomPercent').innerText = Math.round(imgZoom * 100) + '%';
+}
+
+function openLightbox(src, sender, timeStr) {
+    imgZoom = 1;
+    updateZoom();
+    el('lightboxImg').src = src;
+    if (el('downloadImgBtn')) el('downloadImgBtn').href = src;
+    if (el('lightboxInfo')) el('lightboxInfo').innerText = `Отправил(а): ${sender} • ${timeStr}`;
+    el('lightbox').style.display = 'flex';
+}
+
+bindClick('zoomInBtn', (e) => {
+    e.stopPropagation();
+    imgZoom = Math.min(3, imgZoom + 0.25);
+    updateZoom();
+});
+
+bindClick('zoomOutBtn', (e) => {
+    e.stopPropagation();
+    imgZoom = Math.max(0.25, imgZoom - 0.25);
+    updateZoom();
+});
+
+const lbImg = el('lightboxImg');
+if (lbImg) {
+    lbImg.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        imgZoom += e.deltaY * -0.002;
+        imgZoom = Math.min(Math.max(0.25, imgZoom), 3);
+        updateZoom();
+    }, { passive: false });
+}
 
 bindClick('showPinsBtn', async () => {
     if (!currentChat.startsWith('channel_')) return showToast('Закрепы доступны только в каналах!');
