@@ -41,6 +41,8 @@ const db = createClient({
 });
 
 async function initDB() {
+    await db.execute(`DROP TABLE IF EXISTS messages`);
+
     await db.execute(`CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE, password TEXT, avatar TEXT DEFAULT '', bio TEXT DEFAULT '', banner_color TEXT DEFAULT '#FF4DA6', banner_image TEXT DEFAULT '', display_name TEXT DEFAULT '', custom_status TEXT DEFAULT '', activity TEXT DEFAULT '', social_links TEXT DEFAULT '', pronouns TEXT DEFAULT '', reg_date DATETIME DEFAULT CURRENT_TIMESTAMP)`);
     await db.execute(`CREATE TABLE IF NOT EXISTS messages (id INTEGER PRIMARY KEY AUTOINCREMENT, sender TEXT, recipient TEXT, content TEXT, type TEXT DEFAULT 'text', reply_author TEXT DEFAULT '', reply_text TEXT DEFAULT '', is_pinned BOOLEAN DEFAULT 0, reactions TEXT DEFAULT '{}', timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)`);
     await db.execute(`CREATE TABLE IF NOT EXISTS friends (id INTEGER PRIMARY KEY AUTOINCREMENT, requester TEXT, receiver TEXT, status TEXT DEFAULT 'pending')`);
