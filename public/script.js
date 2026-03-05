@@ -1,4 +1,3 @@
-// ФИКС 5: Форсируем вебсокеты для моментальной скорости (без них Render тупит)
 const socket = io({ transports: ['websocket'] });
 let currentUser = null, currentAvatar = '', currentBio = '', currentChat = 'friends';
 let lastSender = null, lastMessageDate = null, activeDMs = new Set(), unreadCounts = {}, allUsers = [], pendingFriendRequests = 0;
@@ -115,7 +114,6 @@ window.onload = async () => {
         msgInput.addEventListener('keydown', handleMentionKeydown);
     }
 
-    // ФИКС 11: Запрашиваем права на фоновые пуши от Windows
     if (Notification.permission !== 'granted' && Notification.permission !== 'denied') {
         Notification.requestPermission();
     }
@@ -314,14 +312,12 @@ window.loadServer = async (serverId) => {
 
 bindClick('serverHeader', () => {
     if (!currentServerObj) return; const drop = el('serverDropdown'); drop.style.display = drop.style.display === 'none' ? 'block' : 'none';
-
     let iCanManageChannels = false;
     if (currentServerObj.owner === currentUser) iCanManageChannels = true;
     else {
         const myRoles = getUserRoles(currentUser);
         myRoles.forEach(rId => { const r = serverRolesCache.find(x => x.id == rId); if (r && r.can_manage_channels) iCanManageChannels = true; });
     }
-
     el('dropdownSettings').style.display = (currentServerObj.owner === currentUser) ? 'flex' : 'none';
     el('dropdownCreateChannel').style.display = iCanManageChannels ? 'flex' : 'none';
     el('dropdownSeparator').style.display = iCanManageChannels ? 'block' : 'none';
@@ -357,15 +353,12 @@ bindClick('submitChannelBtn', async () => {
 function syncChannelPermsFromDOM() {
     const chEvView = el('editChEvView');
     const chEvSend = el('editChEvSend');
-
     if (chEvView) currentChannelPerms.everyone.view = chEvView.checked;
     if (chEvSend) currentChannelPerms.everyone.send = chEvSend.checked;
-
     document.querySelectorAll('.role-perm-row').forEach(row => {
         const rId = row.dataset.rid;
         if (!currentChannelPerms.roles) currentChannelPerms.roles = {};
         if (!currentChannelPerms.roles[rId]) currentChannelPerms.roles[rId] = { view: true, send: true };
-
         const vCb = row.querySelector('.perm-view-cb');
         const sCb = row.querySelector('.perm-send-cb');
         if (vCb) currentChannelPerms.roles[rId].view = vCb.checked;
@@ -376,7 +369,6 @@ function syncChannelPermsFromDOM() {
 function renderChannelPerms() {
     const list = el('channelPermsList'); list.innerHTML = '';
     list.insertAdjacentHTML('beforeend', `<div class="perm-row"><span>@everyone</span><div class="perm-toggles"><label class="perm-label"><input type="checkbox" id="editChEvView" ${currentChannelPerms.everyone.view !== false ? 'checked' : ''} onchange="window.toggleChannelPriv(this)"> Видеть</label><label class="perm-label"><input type="checkbox" id="editChEvSend" ${currentChannelPerms.everyone.send !== false ? 'checked' : ''}> Писать</label></div></div>`);
-
     for (let rId in currentChannelPerms.roles) {
         const rObj = serverRolesCache.find(r => r.id == rId); if (!rObj) continue;
         list.insertAdjacentHTML('beforeend', `<div class="perm-row role-perm-row" data-rid="${rId}"><span style="color:${rObj.color}; font-weight:bold;">${rObj.name}</span><div class="perm-toggles"><label class="perm-label"><input type="checkbox" class="perm-view-cb" ${currentChannelPerms.roles[rId].view ? 'checked' : ''}> Видеть</label><label class="perm-label"><input type="checkbox" class="perm-send-cb" ${currentChannelPerms.roles[rId].send ? 'checked' : ''}> Писать</label><span class="action-icon-small del" onclick="window.removeChPerm(${rId})">✖</span></div></div>`);
@@ -484,13 +476,17 @@ bindClick('createRoleBtn', async () => {
 window.deleteRole = function (roleId) { showConfirm('Удалить роль?', 'Это действие нельзя отменить.', 'Удалить', async () => { await fetch('/api/roles/delete', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ role_id: roleId, server_id: currentServerObj.id }) }); }); };
 window.toggleRole = async (username, roleId) => { if (!roleId) return; const member = serverMembersCache.find(m => m.username === username); if (!member) return; let rIds = JSON.parse(member.roles || '[]'); if (rIds.includes(roleId.toString())) rIds = rIds.filter(id => id != roleId); else rIds.push(roleId.toString()); await fetch('/api/members/roles/update', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ server_id: currentServerObj.id, username, roles: rIds }) }); };
 
-// ФИКС 8: Красный кружок уведомлений (до 9+) на иконке приложения
+// Обновление бейджей и заголовка окна
 function updateHomeBadge() {
     let total = pendingFriendRequests;
     for (let c in unreadCounts) { if (c !== 'general' && !c.startsWith('channel_')) total += unreadCounts[c]; }
     const hb = el('badge-home');
     if (hb) { if (total > 0) { hb.innerText = total; hb.style.display = 'block'; } else hb.style.display = 'none'; }
 
+    // Закидываем уведомления в Title окна (очень заметно)
+    document.title = total > 0 ? `(${total > 9 ? '9+' : total}) KittyCord` : `KittyCord`;
+
+    // Бейдж на иконке панели задач (если поддерживает ОС)
     if (navigator.setAppBadge) {
         if (total > 0) navigator.setAppBadge(total > 9 ? 9 : total).catch(console.error);
         else navigator.clearAppBadge().catch(console.error);
@@ -501,6 +497,7 @@ bindClick('btnHome', () => { currentServerObj = null; el('membersPanel').style.d
 bindClick('btnGeneral', () => { currentServerObj = null; el('membersPanel').style.display = 'none'; el('serverHeaderChevron').style.display = 'none'; el('btnHome').classList.remove('active'); el('btnGeneral').classList.add('active'); document.querySelectorAll('.server-icon').forEach(e => e.classList.remove('active')); el('serverChannels').style.display = 'block'; el('dmSection').style.display = 'none'; el('panelTitle').innerText = 'Kitty Server'; if (el('addChannelBtn')) el('addChannelBtn').style.display = 'none'; el('serverChannelsList').innerHTML = `<div class="channel" onclick="window.loadChat('general', true)" id="ui-general"><span class="name"># общий-чат</span></div>`; window.loadChat('general', true); });
 function openFriendsMenu() { currentChat = 'friends'; document.querySelectorAll('.channel, .dm-user').forEach(e => e.classList.remove('active')); el('btnFriendsMenu').classList.add('active'); el('chatArea').style.display = 'none'; el('friendsArea').style.display = 'flex'; fetchFriends(); window.cancelReply(); }
 
+// Заглушка загрузки чата, чтобы не было дерганий
 window.loadChat = function (chatName, canSend = true) {
     currentChat = chatName;
     if (chatName === 'general') { el('chatTitle').innerText = '# общий-чат'; el('membersPanel').style.display = 'none'; }
@@ -530,7 +527,8 @@ window.loadChat = function (chatName, canSend = true) {
     if (canSend) { el('chatInputArea').style.display = 'flex'; el('chatNoAccessArea').style.display = 'none'; }
     else { el('chatInputArea').style.display = 'none'; el('chatNoAccessArea').style.display = 'block'; }
 
-    if (messagesContainer) messagesContainer.innerHTML = '';
+    // Заглушка, пока не придет история
+    if (messagesContainer) messagesContainer.innerHTML = '<div style="display:flex; height:100%; align-items:center; justify-content:center; color:var(--text-muted); font-size:14px;">Загрузка сообщений...</div>';
     socket.emit('get_history', { username: currentUser, chatWith: currentChat });
 };
 
@@ -539,7 +537,7 @@ function removeUnreadDMBubble(username) { const elem = el(`quick-dm-${username}`
 window.closeDM = (username) => { removeUnreadDMBubble(username); const dm = el(`dm-${username}`); if (dm) dm.remove(); activeDMs.delete(username); if (currentChat === username) el('btnHome').click(); };
 function addToDMList(username, avatarData, isActive = false) { if (username === 'general' || username === currentUser || username.startsWith('channel_')) return; if (activeDMs.has(username)) { if (isActive) { el(`dm-${username}`).classList.add('active'); } if (avatarData) updateAvatarDisplay(`dm-avatar-${username}`, avatarData, username); return; } const uData = allUsers.find(u => u.username === username); const displayName = uData?.display_name || username; activeDMs.add(username); el('dmList').insertAdjacentHTML('afterbegin', `<div class="dm-user ${isActive ? 'active' : ''}" id="dm-${username}" onclick="window.loadChat('${username}')"><div class="user-avatar-wrap" style="width:32px;height:32px;"><div class="user-avatar dm-avatar" id="dm-avatar-${username}">🐱</div></div><span class="name">${displayName}</span><span class="dm-close-btn" onclick="event.stopPropagation(); window.closeDM('${username}')">&times;</span><span class="badge" id="badge-${username}" style="display:none;">0</span></div>`); fetch(`/api/user/${username}`).then(r => r.json()).then(d => { if (d.success) updateAvatarDisplay(`dm-avatar-${username}`, d.avatar, username); }); }
 
-function incrementBadge(chatId, isPing = false, avatarData = null, serverId = null) {
+function incrementBadge(chatId, isPing = false, avatarData = null, serverId = null, fullMsg = null) {
     if (chatId === currentChat && document.hasFocus()) return;
     unreadCounts[chatId] = (unreadCounts[chatId] || 0) + 1;
     const b1 = el(`badge-${chatId}`); if (b1) { b1.innerText = unreadCounts[chatId]; b1.style.display = 'inline-block'; }
@@ -553,20 +551,20 @@ function incrementBadge(chatId, isPing = false, avatarData = null, serverId = nu
     }
     updateHomeBadge(); playPingSound();
 
-    // ФИКС 11: Системные Push-уведомления от Windows, если окно свернуто
-    if (!document.hasFocus() && Notification.permission === "granted") {
-        const title = isPing ? "Упоминание на сервере" : "Новое личное сообщение";
-        new Notification(title, { body: "Зайдите в KittyCord, чтобы прочитать!", icon: avatarData || '' });
+    // Детальное Push-уведомление от Windows
+    if (!document.hasFocus() && Notification.permission === "granted" && fullMsg) {
+        const authorName = fullMsg.display_name || fullMsg.sender;
+        const title = isPing ? `Упоминание от ${authorName}` : `Новое сообщение от ${authorName}`;
+        let bodyText = fullMsg.type === 'text' ? fullMsg.content : `[Отправил(а) медиафайл]`;
+        bodyText = bodyText.replace(/\*\*/g, '').replace(/~~/g, '').substring(0, 50);
+        new Notification(title, { body: bodyText, icon: fullMsg.avatar || avatarData || '' });
     }
 }
+
 function clearBadge(chatId) {
     unreadCounts[chatId] = 0; const b1 = el(`badge-${chatId}`); if (b1) { b1.innerText = '0'; b1.style.display = 'none'; }
     if (chatId !== 'general' && !chatId.startsWith('channel_')) removeUnreadDMBubble(chatId);
-
-    if (currentServerObj && currentChat.startsWith('channel_')) {
-        const sBadge = el(`badge-server_${currentServerObj.id}`);
-        if (sBadge) { sBadge.innerText = '0'; sBadge.style.display = 'none'; }
-    }
+    if (currentServerObj && currentChat.startsWith('channel_')) { const sBadge = el(`badge-server_${currentServerObj.id}`); if (sBadge) { sBadge.innerText = '0'; sBadge.style.display = 'none'; } }
     updateHomeBadge();
 }
 
@@ -578,7 +576,6 @@ socket.on('friend_update', (data) => { if (data.user === currentUser) fetchFrien
 
 bindClick('closeModal', () => el('profileModal').style.display = 'none');
 
-// ФИКС 4: Выдача ролей прямо через профиль юзера
 window.openProfile = async (username, defaultAvatar) => {
     const isMe = username === currentUser; const data = await (await fetch(`/api/user/${username}`)).json(); const u = data.success ? data : {};
     el('profileDisplayName').value = u.display_name || username; el('profileUsername').innerText = `@${username}`; el('profilePronouns').value = u.pronouns || ''; el('profileCustomStatus').value = u.custom_status || ''; el('profileActivity').value = u.activity || ''; el('profileBio').value = u.bio || ''; el('profileSocials').value = u.social_links || '';
@@ -594,14 +591,14 @@ window.openProfile = async (username, defaultAvatar) => {
     if (currentServerObj && serverMembersCache.length > 0) {
         const mem = serverMembersCache.find(m => m.username === username);
         let memRoles = [];
-        let iCanManageRoles = (currentServerObj.owner === currentUser); // Выдавать роли может только овнер
+        let iCanManageRoles = (currentServerObj.owner === currentUser);
 
         if (mem && mem.roles) {
             memRoles = JSON.parse(mem.roles);
             memRoles.forEach(id => {
                 const roleObj = serverRolesCache.find(r => r.id == id);
                 if (roleObj) {
-                    const delBtn = iCanManageRoles ? `<span style="cursor:pointer; margin-left:6px; opacity:0.7;" onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=0.7" onclick="window.toggleRole('${username}', ${roleObj.id}); setTimeout(()=>window.openProfile('${username}', '${defaultAvatar}'), 300);">&times;</span>` : '';
+                    const delBtn = iCanManageRoles ? `<span style="cursor:pointer; margin-left:6px; opacity:0.7;" onclick="window.toggleRole('${username}', ${roleObj.id}); setTimeout(()=>window.openProfile('${username}', '${defaultAvatar}'), 300);">&times;</span>` : '';
                     prList.insertAdjacentHTML('beforeend', `<div class="role-pill" style="border-color:${roleObj.color};"><div class="role-pill-color" style="background:${roleObj.color};"></div><span style="color:${roleObj.color};">${roleObj.name}</span>${delBtn}</div>`);
                 }
             });
@@ -656,9 +653,7 @@ window.togglePin = function (id, pin) {
             if (el('pinNotifyCb') && el('pinNotifyCb').checked) socket.emit('send_message', { sender: 'Система', recipient: currentChat, server_id: currentServerObj ? currentServerObj.id : null, content: `📌 Пользователь **${currentUser}** закрепил сообщение.`, type: 'system' });
             showToast('Закреплено!');
         });
-    } else {
-        fetch('/api/messages/pin', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, pin: false }) }); showToast('Откреплено!');
-    }
+    } else { fetch('/api/messages/pin', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, pin: false }) }); showToast('Откреплено!'); }
 }
 
 window.addReaction = function (msgId, emoji) {
@@ -687,7 +682,6 @@ window.addReaction = function (msgId, emoji) {
 
 function appendMessage(msg, isNew = false) {
     if (!messagesContainer) return;
-
     const existing = el(`msg-${msg.id}`);
     let timeObj = new Date(msg.timestamp); if (isNaN(timeObj.getTime()) && typeof msg.timestamp === 'string') { timeObj = new Date(msg.timestamp.replace(' ', 'T') + 'Z'); } if (isNaN(timeObj.getTime())) timeObj = new Date();
     const timeStr = `${String(timeObj.getHours()).padStart(2, '0')}:${String(timeObj.getMinutes()).padStart(2, '0')}`; const dateStr = getNiceDate(timeObj);
@@ -725,16 +719,14 @@ function appendMessage(msg, isNew = false) {
 
     const safeContent = msg.content ? String(msg.content) : '';
     let cHTML = '';
-    if (msg.type === 'image') cHTML = `<img src="${safeContent}" class="message-image" onclick="openLightbox('${safeContent}', '${msg.sender}', '${timeStr}')">`;
+    // Фикс подпрыгивания: Картинка загружается плавно, не ломая верстку
+    if (msg.type === 'image') cHTML = `<img src="${safeContent}" class="message-image" onload="if(${isNew}) document.getElementById('chat').scrollTop = document.getElementById('chat').scrollHeight;" onclick="openLightbox('${safeContent}', '${msg.sender}', '${timeStr}')" style="min-height:100px; max-height:300px; border-radius:8px; background:var(--bg-servers);">`;
     else if (msg.type === 'video') cHTML = `<div class="custom-video-wrapper"><video src="${safeContent}" class="message-video" preload="metadata"></video><div class="video-overlay-play">▶</div><div class="custom-video-controls"><button class="play-pause-btn">▶</button><span class="video-time">0:00 / 0:00</span><input type="range" class="video-progress" value="0" min="0" max="100" step="0.1"><a href="${safeContent}" download class="dl-video-btn" title="Скачать">📥</a><button class="fullscreen-btn" title="На весь экран">⛶</button></div></div>`;
     else if (msg.type === 'audio') cHTML = `<div class="custom-audio-wrapper"><button class="play-pause-btn audio-play-btn">▶</button><div class="audio-progress-container"><input type="range" class="audio-progress video-progress" value="0" min="0" max="100" step="0.1"></div><span class="audio-time">0:00</span><button class="audio-dots-btn" onclick="window.openAudioMenu(this, event)">⋮</button><audio id="audio-${msg.id}" src="${safeContent}" preload="auto" style="display:none;"></audio></div>`;
     else cHTML = `<div class="message-text">${formatText(safeContent)}</div>`;
 
     const aName = msg.display_name || msg.sender;
-
-    // ФИКС 7: Стандартный цвет, если у человека нет роли 
-    const roleColor = getUserTopRole(msg.sender)?.color || 'var(--text-main)';
-
+    const roleColor = getUserTopRole(msg.sender)?.color || 'var(--text-main)'; // Фикс цвета ника
     let replyHTML = msg.reply_author ? `<div class="reply-badge">Ответ <span style="font-weight:bold;color:var(--text-main);">${msg.reply_author}</span>: ${msg.reply_text.substring(0, 30)}</div>` : '';
     let pinHTML = msg.is_pinned ? `<div class="pin-badge" style="font-size:10px; color:var(--accent); font-weight:bold; margin-bottom:4px;">📌 Закреплено</div>` : '';
 
@@ -745,7 +737,6 @@ function appendMessage(msg, isNew = false) {
     }
     const mentionClass = isPinged ? 'mentioned-msg' : '';
     const animStyle = isNew ? 'animation: popIn 0.3s forwards;' : '';
-
     const isGrouped = (lastSender === msg.sender && msg.type === 'text' && !msg.reply_author && !msg.is_pinned);
 
     if (isGrouped) {
@@ -755,12 +746,18 @@ function appendMessage(msg, isNew = false) {
         messagesContainer.insertAdjacentHTML('beforeend', `<div class="message-group ${mentionClass}" id="msg-${msg.id}" data-sender="${msg.sender}" data-pinned="${msg.is_pinned ? '1' : '0'}" style="${animStyle}"><div class="message-avatar-wrap" onclick="window.openProfile('${msg.sender}', '${msg.avatar}')"><div class="user-avatar">${aHTML}</div></div><div class="message-content">${pinHTML}${replyHTML}<div class="message-header"><span class="message-author" style="color:${roleColor};" onclick="window.openProfile('${msg.sender}', '${msg.avatar}')">${aName}</span><span class="message-time">${timeStr}</span></div><div class="message-text-wrapper">${cHTML}</div><div class="reactions-wrapper">${reactionsHTML}</div></div></div>`);
     }
     lastSender = (msg.type === 'text' && !msg.reply_author && !msg.is_pinned) ? msg.sender : null;
-    if (isNew) messagesContainer.scrollTop = messagesContainer.scrollHeight;
+    if (isNew) setTimeout(() => messagesContainer.scrollTop = messagesContainer.scrollHeight, 10);
 
     if (msg.type === 'audio') { setTimeout(() => { const newAudio = el(`audio-${msg.id}`); if (newAudio) { newAudio.onloadedmetadata = function () { if (newAudio.duration === Infinity) { newAudio.currentTime = 1e101; newAudio.ontimeupdate = function () { newAudio.ontimeupdate = null; newAudio.currentTime = 0; }; } else { const w = newAudio.closest('.custom-audio-wrapper'); if (w) w.querySelector('.audio-time').innerText = `0:00 / ${formatTime(newAudio.duration)}`; } }; newAudio.load(); } }, 100); }
 }
 
-socket.on('load_history', (m) => { if (!messagesContainer) return; messagesContainer.innerHTML = ''; lastSender = null; lastMessageDate = null; m.forEach(x => appendMessage(x, false)); messagesContainer.scrollTop = messagesContainer.scrollHeight; });
+socket.on('load_history', (m) => {
+    if (!messagesContainer) return;
+    messagesContainer.innerHTML = '';
+    lastSender = null; lastMessageDate = null;
+    m.forEach(x => appendMessage(x, false));
+    setTimeout(() => { messagesContainer.scrollTop = messagesContainer.scrollHeight; }, 50);
+});
 
 socket.on('receive_message', (msg) => {
     if (currentChat === msg.recipient || currentChat === msg.sender || (currentChat === 'general' && msg.recipient === 'general')) {
@@ -770,8 +767,8 @@ socket.on('receive_message', (msg) => {
         if (msg.content && (msg.content.includes('@' + currentUser) || msg.content.includes('@everyone') || msg.content.includes('@here'))) isPing = true;
         if (currentServerObj && msg.content) { const myRoles = getUserRoles(currentUser); myRoles.forEach(rid => { const r = serverRolesCache.find(x => x.id == rid); if (r && msg.content.includes('@' + r.name)) isPing = true; }); }
 
-        if (msg.recipient === currentUser) { addToDMList(msg.sender, msg.avatar); incrementBadge(msg.sender, false, msg.avatar, null); }
-        else if (msg.recipient.startsWith('channel_') || msg.recipient === 'general') { if (isPing) incrementBadge(msg.recipient, true, null, msg.server_id); }
+        if (msg.recipient === currentUser) { addToDMList(msg.sender, msg.avatar); incrementBadge(msg.sender, false, msg.avatar, null, msg); }
+        else if (msg.recipient.startsWith('channel_') || msg.recipient === 'general') { if (isPing) incrementBadge(msg.recipient, true, null, msg.server_id, msg); }
     }
 });
 
@@ -849,13 +846,24 @@ function selectMention(u) {
 async function uploadFile(file, type) {
     const formData = new FormData();
     formData.append('file', file);
+
+    // UX защита от лагов
+    showToast('⏳ Отправка медиа...', false);
+    msgInput.disabled = true;
+    msgInput.placeholder = 'Отправляем...';
+
     try {
         const res = await fetch('/api/upload', { method: 'POST', body: formData });
         const data = await res.json();
         if (data.success) {
             socket.emit('send_message', { sender: currentUser, recipient: currentChat, server_id: currentServerObj ? currentServerObj.id : null, content: data.url, type: type, reply_author: replyingTo?.author || '', reply_text: replyingTo?.text || '' });
+            showToast('✅ Успешно!');
         } else { showToast('Ошибка загрузки файла!', true); }
     } catch (e) { showToast('Сервер не отвечает', true); }
+
+    msgInput.disabled = false;
+    msgInput.placeholder = 'Написать...';
+    msgInput.focus();
     window.cancelReply();
 }
 
