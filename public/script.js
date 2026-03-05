@@ -588,7 +588,6 @@ window.togglePin = function (id, pin) {
     }
 }
 
-// ФИКС: РЕАКЦИИ БЕЗ УДАЛЕНИЯ ТЕКСТА СООБЩЕНИЯ
 window.addReaction = function (msgId, emoji) {
     const msgEl = el(`msg-${msgId}`);
     if (msgEl) {
@@ -599,6 +598,10 @@ window.addReaction = function (msgId, emoji) {
             const contentDiv = msgEl.querySelector('.message-content') || msgEl.querySelector('.message-grouped-text');
             if (contentDiv) contentDiv.appendChild(wrap);
         }
+
+        // 🔥 СТАВИМ БЛОКИРОВКУ: на 1.5 секунды запрещаем серверу стирать наши локальные реакции
+        wrap.dataset.locked = Date.now();
+
         let reactsCont = wrap.querySelector('.reactions-container');
         if (!reactsCont) {
             reactsCont = document.createElement('div');
@@ -660,7 +663,14 @@ function appendMessage(msg, isNew = false) {
             const contentDiv = existing.querySelector('.message-content') || existing.querySelector('.message-grouped-text');
             if (contentDiv) contentDiv.appendChild(wrap);
         }
-        wrap.innerHTML = reactionsHTML;
+
+        // 🔥 ПРОВЕРЯЕМ БЛОКИРОВКУ: Обновляем реакции с сервера, только если мы сами их не трогали последние 1.5 секунды
+        const lockTime = parseInt(wrap.dataset.locked || '0');
+        if (Date.now() - lockTime > 1500) {
+            if (msg.reactions !== undefined) {
+                wrap.innerHTML = reactionsHTML;
+            }
+        }
 
         existing.dataset.pinned = msg.is_pinned ? '1' : '0';
         let oldPin = existing.querySelector('.pin-badge');
