@@ -199,6 +199,28 @@ body {
     opacity: 1;
 }
 
+/* Фиксим улетающие кружки уведомлений */
+.server-icon,
+.dm-user {
+    position: relative;
+}
+
+.badge {
+    position: absolute;
+    bottom: -2px;
+    right: -2px;
+    background-color: #F04747;
+    color: white;
+    font-size: 11px;
+    font-weight: bold;
+    padding: 2px 6px;
+    border-radius: 12px;
+    border: 3px solid var(--bg-nav);
+    /* Обводка чтобы не сливалось с фоном */
+    z-index: 10;
+    pointer-events: none;
+}
+
 .server-separator {
     width: 32px;
     height: 2px;

@@ -23,15 +23,12 @@ function showToast(msg, isError = false) {
     setTimeout(() => t.classList.remove('show'), 3000);
 }
 
+// ФИКС ЗВУКА: один контекст на всё приложение
 let pingAudioCtx = null;
 function playPingSound() {
     try {
-        if (!pingAudioCtx) {
-            pingAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        }
-        // Браузеры иногда "усыпляют" контекст, будим его
+        if (!pingAudioCtx) pingAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
         if (pingAudioCtx.state === 'suspended') pingAudioCtx.resume();
-
         const ctx = pingAudioCtx;
         const playTone = (f, t, d) => {
             const osc = ctx.createOscillator(); const gain = ctx.createGain();
@@ -43,7 +40,7 @@ function playPingSound() {
             osc.start(ctx.currentTime + d); osc.stop(ctx.currentTime + d + t);
         };
         playTone(440, 0.4, 0); playTone(554.37, 0.4, 0.1);
-    } catch (e) { console.error("Ошибка звука:", e); }
+    } catch (e) { }
 }
 
 let confirmAction = null;
@@ -89,31 +86,22 @@ function formatText(text) {
             const isMe = lowerName === currentUser.toLowerCase();
             return `<span class="mention ${isMe ? 'mention-me' : ''}" onclick="window.openProfile('${name}')">@${name}</span>`;
         }
-
         return match;
     });
-
     return s;
 }
 
+// ФИКС ФОРМАТИРОВАНИЯ: функция для ПКМ меню (жирный, курсив и тд)
 window.formatInput = function (syntax, isPrefix = false) {
     if (!msgInput) return;
     const start = msgInput.selectionStart;
     const end = msgInput.selectionEnd;
     const text = msgInput.value;
     const selectedText = text.substring(start, end);
-
-    // Оборачиваем текст в символы (например **текст**) или ставим префикс (> цитата)
-    if (isPrefix) {
-        msgInput.value = text.substring(0, start) + syntax + selectedText + text.substring(end);
-    } else {
-        msgInput.value = text.substring(0, start) + syntax + selectedText + syntax + text.substring(end);
-    }
-
+    if (isPrefix) msgInput.value = text.substring(0, start) + syntax + selectedText + text.substring(end);
+    else msgInput.value = text.substring(0, start) + syntax + selectedText + syntax + text.substring(end);
     if (ctxMenu) ctxMenu.style.display = 'none';
     msgInput.focus();
-
-    // Возвращаем курсор на место
     const newPos = isPrefix ? end + syntax.length : end + syntax.length * 2;
     msgInput.setSelectionRange(newPos, newPos);
 };
@@ -169,7 +157,7 @@ async function fetchServers() {
     sList.innerHTML = '';
     data.servers.forEach(s => {
         const icon = s.icon ? `<img src="${s.icon}">` : `<span style="font-weight:900;">${s.name.charAt(0).toUpperCase()}</span>`;
-        sList.insertAdjacentHTML('beforeend', `<div class="server-icon" id="server-btn-${s.id}" data-tooltip="${s.name}" onclick="window.loadServer(${s.id})"><div class="user-avatar">${icon}</div><span class="badge" id="badge-server_${s.id}" style="display:none; position:absolute; top:-5px; right:-5px; z-index:20;">0</span></div>`);
+        sList.insertAdjacentHTML('beforeend', `<div class="server-icon" id="server-btn-${s.id}" data-tooltip="${s.name}" onclick="window.loadServer(${s.id})"><div class="user-avatar">${icon}</div><span class="badge" id="badge-server_${s.id}" style="display:none;">0</span></div>`);
     });
 }
 
@@ -508,11 +496,26 @@ bindClick('btnHome', () => { currentServerObj = null; el('membersPanel').style.d
 bindClick('btnGeneral', () => { currentServerObj = null; el('membersPanel').style.display = 'none'; el('serverHeaderChevron').style.display = 'none'; el('btnHome').classList.remove('active'); el('btnGeneral').classList.add('active'); document.querySelectorAll('.server-icon').forEach(e => e.classList.remove('active')); el('serverChannels').style.display = 'block'; el('dmSection').style.display = 'none'; el('panelTitle').innerText = 'Kitty Server'; if (el('addChannelBtn')) el('addChannelBtn').style.display = 'none'; el('serverChannelsList').innerHTML = `<div class="channel" onclick="window.loadChat('general', true)" id="ui-general"><span class="name"># общий-чат</span></div>`; window.loadChat('general', true); });
 function openFriendsMenu() { currentChat = 'friends'; document.querySelectorAll('.channel, .dm-user').forEach(e => e.classList.remove('active')); el('btnFriendsMenu').classList.add('active'); el('chatArea').style.display = 'none'; el('friendsArea').style.display = 'flex'; fetchFriends(); window.cancelReply(); }
 
+// ФИКС ЛЕВОЙ ПАНЕЛИ: ПРИНУДИТЕЛЬНЫЙ ПЕРЕХОД НА ГЛАВНУЮ ПРИ ОТКРЫТИИ ЛС
 window.loadChat = function (chatName, canSend = true) {
     currentChat = chatName;
     if (chatName === 'general') { el('chatTitle').innerText = '# общий-чат'; el('membersPanel').style.display = 'none'; }
     else if (chatName.startsWith('channel_')) { const uiCh = el(`ui-${chatName}`); const nSpan = uiCh ? uiCh.querySelector('.name') : null; el('chatTitle').innerText = nSpan ? nSpan.innerText : '# канал'; if (currentServerObj) el('membersPanel').style.display = 'flex'; }
-    else { const uData = allUsers.find(u => u.username === chatName); el('chatTitle').innerText = `ЛС: @${uData?.display_name || chatName}`; el('membersPanel').style.display = 'none'; }
+    else {
+        const uData = allUsers.find(u => u.username === chatName) || { display_name: chatName };
+        el('chatTitle').innerText = `ЛС: @${uData.display_name || chatName}`;
+
+        // Жестко сбрасываем серверное меню
+        el('membersPanel').style.display = 'none';
+        currentServerObj = null;
+        document.querySelectorAll('.server-icon').forEach(e => e.classList.remove('active'));
+        if (el('btnHome')) el('btnHome').classList.add('active');
+        if (el('btnGeneral')) el('btnGeneral').classList.remove('active');
+        el('serverChannels').style.display = 'none';
+        el('dmSection').style.display = 'block';
+        el('panelTitle').innerText = 'Главная';
+        el('serverHeaderChevron').style.display = 'none';
+    }
 
     document.querySelectorAll('.channel, .dm-user').forEach(e => e.classList.remove('active'));
     if (chatName === 'general') { const ug = el('ui-general'); if (ug) ug.classList.add('active'); }
@@ -573,7 +576,8 @@ window.openProfile = async (username, defaultAvatar) => {
     if (u.banner_image && u.banner_image.startsWith('data:image')) { bannerEl.style.backgroundImage = `url(${u.banner_image})`; bannerEl.style.backgroundColor = 'transparent'; } else { bannerEl.style.backgroundImage = 'none'; bannerEl.style.backgroundColor = u.banner_color || 'var(--accent)'; }
     ['profileDisplayName', 'profilePronouns', 'profileCustomStatus', 'profileActivity', 'profileBio', 'profileSocials'].forEach(id => el(id).disabled = !isMe);
     el('profilePronouns').style.display = (!isMe && !u.pronouns) ? 'none' : 'inline-block'; el('statusContainer').style.display = (!isMe && !u.custom_status) ? 'none' : 'flex'; el('activityContainer').style.display = (!isMe && !u.activity) ? 'none' : 'flex'; el('bioContainer').style.display = (!isMe && !u.bio) ? 'none' : 'block'; el('socialsContainer').style.display = (!isMe && !u.social_links) ? 'none' : 'block';
-    el('changeAvatarBtn').style.display = isMe ? 'flex' : 'none'; el('changeBannerBtn').style.display = isMe ? 'flex' : 'none'; el('logoutBtn').style.display = isMe ? 'block' : 'none'; el('saveBioBtn').style.display = isMe ? 'block' : 'none'; el('dmBtn').style.display = isMe ? 'none' : 'block'; el('dmBtn').onclick = () => { el('profileModal').style.display = 'none'; window.loadChat(username); };
+    el('changeAvatarBtn').style.display = isMe ? 'flex' : 'none'; el('changeBannerBtn').style.display = isMe ? 'flex' : 'none'; el('logoutBtn').style.display = isMe ? 'block' : 'none'; el('saveBioBtn').style.display = isMe ? 'block' : 'none'; el('dmBtn').style.display = isMe ? 'none' : 'block';
+    el('dmBtn').onclick = () => { el('profileModal').style.display = 'none'; window.loadChat(username); };
     const prList = el('profileRolesList'); prList.innerHTML = '';
     if (currentServerObj && serverMembersCache.length > 0) { const mem = serverMembersCache.find(m => m.username === username); if (mem && mem.roles) { const rIds = JSON.parse(mem.roles); rIds.forEach(id => { const roleObj = serverRolesCache.find(r => r.id == id); if (roleObj) prList.insertAdjacentHTML('beforeend', `<div class="role-pill" style="border-color:${roleObj.color};"><div class="role-pill-color" style="background:${roleObj.color};"></div><span style="color:${roleObj.color};">${roleObj.name}</span></div>`); }); } }
     el('profileModal').style.display = 'flex';
@@ -586,43 +590,14 @@ bindClick('myProfileBtn', () => window.openProfile(currentUser, currentAvatar));
 bindClick('logoutBtn', () => { localStorage.removeItem('kitty_user'); location.reload(); });
 socket.on('profile_updated', (data) => { if (data.username === currentUser) { currentAvatar = data.avatar; myProfileData = data; el('myUsername').innerText = data.display_name || currentUser; updateAvatarDisplay('myAvatarDisplay', currentAvatar, currentUser); } const user = allUsers.find(u => u.username === data.username); if (user) Object.assign(user, data); else allUsers.push(data); if (currentChat !== 'friends') window.loadChat(currentChat); else fetchFriends(); });
 
+// ФИКС ЗУМА КОЛЕСИКОМ
 bindClick('closeLightbox', () => el('lightbox').style.display = 'none');
-
-function updateZoom() {
-    el('lightboxImg').style.transform = `scale(${imgZoom})`;
-    if (el('zoomPercent')) el('zoomPercent').innerText = Math.round(imgZoom * 100) + '%';
-}
-
-function openLightbox(src, sender, timeStr) {
-    imgZoom = 1;
-    updateZoom();
-    el('lightboxImg').src = src;
-    if (el('downloadImgBtn')) el('downloadImgBtn').href = src;
-    if (el('lightboxInfo')) el('lightboxInfo').innerText = `Отправил(а): ${sender} • ${timeStr}`;
-    el('lightbox').style.display = 'flex';
-}
-
-bindClick('zoomInBtn', (e) => {
-    e.stopPropagation();
-    imgZoom = Math.min(3, imgZoom + 0.25);
-    updateZoom();
-});
-
-bindClick('zoomOutBtn', (e) => {
-    e.stopPropagation();
-    imgZoom = Math.max(0.25, imgZoom - 0.25);
-    updateZoom();
-});
-
+function updateZoom() { el('lightboxImg').style.transform = `scale(${imgZoom})`; if (el('zoomPercent')) el('zoomPercent').innerText = Math.round(imgZoom * 100) + '%'; }
+function openLightbox(src, sender, timeStr) { imgZoom = 1; updateZoom(); el('lightboxImg').src = src; if (el('downloadImgBtn')) el('downloadImgBtn').href = src; if (el('lightboxInfo')) el('lightboxInfo').innerText = `Отправил(а): ${sender} • ${timeStr}`; el('lightbox').style.display = 'flex'; }
+bindClick('zoomInBtn', (e) => { e.stopPropagation(); imgZoom = Math.min(3, imgZoom + 0.25); updateZoom(); });
+bindClick('zoomOutBtn', (e) => { e.stopPropagation(); imgZoom = Math.max(0.25, imgZoom - 0.25); updateZoom(); });
 const lbImg = el('lightboxImg');
-if (lbImg) {
-    lbImg.addEventListener('wheel', (e) => {
-        e.preventDefault();
-        imgZoom += e.deltaY * -0.002;
-        imgZoom = Math.min(Math.max(0.25, imgZoom), 3);
-        updateZoom();
-    }, { passive: false });
-}
+if (lbImg) { lbImg.addEventListener('wheel', (e) => { e.preventDefault(); imgZoom += e.deltaY * -0.002; imgZoom = Math.min(Math.max(0.25, imgZoom), 3); updateZoom(); }, { passive: false }); }
 
 bindClick('showPinsBtn', async () => {
     if (!currentChat.startsWith('channel_')) return showToast('Закрепы доступны только в каналах!');
@@ -658,38 +633,21 @@ window.addReaction = function (msgId, emoji) {
     if (msgEl) {
         let wrap = msgEl.querySelector('.reactions-wrapper');
         if (!wrap) {
-            wrap = document.createElement('div');
-            wrap.className = 'reactions-wrapper';
+            wrap = document.createElement('div'); wrap.className = 'reactions-wrapper';
             const contentDiv = msgEl.querySelector('.message-content') || msgEl.querySelector('.message-grouped-text');
             if (contentDiv) contentDiv.appendChild(wrap);
         }
-
-        // 🔥 СТАВИМ БЛОКИРОВКУ: на 1.5 секунды запрещаем серверу стирать наши локальные реакции
         wrap.dataset.locked = Date.now();
-
         let reactsCont = wrap.querySelector('.reactions-container');
-        if (!reactsCont) {
-            reactsCont = document.createElement('div');
-            reactsCont.className = 'reactions-container';
-            wrap.appendChild(reactsCont);
-        }
-
+        if (!reactsCont) { reactsCont = document.createElement('div'); reactsCont.className = 'reactions-container'; wrap.appendChild(reactsCont); }
         let pill = Array.from(reactsCont.children).find(c => c.innerHTML.includes(emoji));
         if (pill) {
-            let countEl = pill.querySelector('.reaction-count');
-            let count = parseInt(countEl.innerText);
-            if (pill.classList.contains('active')) {
-                count--; pill.classList.remove('active');
-                if (count <= 0) pill.remove(); else countEl.innerText = count;
-            } else {
-                count++; pill.classList.add('active'); countEl.innerText = count;
-            }
-        } else {
-            reactsCont.insertAdjacentHTML('beforeend', `<div class="reaction-pill active" onclick="window.addReaction(${msgId}, '${emoji}')">${emoji} <span class="reaction-count">1</span></div>`);
-        }
+            let countEl = pill.querySelector('.reaction-count'); let count = parseInt(countEl.innerText);
+            if (pill.classList.contains('active')) { count--; pill.classList.remove('active'); if (count <= 0) pill.remove(); else countEl.innerText = count; }
+            else { count++; pill.classList.add('active'); countEl.innerText = count; }
+        } else { reactsCont.insertAdjacentHTML('beforeend', `<div class="reaction-pill active" onclick="window.addReaction(${msgId}, '${emoji}')">${emoji} <span class="reaction-count">1</span></div>`); }
         if (reactsCont.children.length === 0) reactsCont.remove();
     }
-
     fetch('/api/messages/react', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: msgId, emoji: emoji, username: currentUser }) });
     if (ctxMenu) ctxMenu.style.display = 'none';
 }
@@ -711,7 +669,8 @@ function appendMessage(msg, isNew = false) {
 
     let reactionsHTML = '';
     try {
-        const reacts = JSON.parse(msg.reactions || '{}'); const reactKeys = Object.keys(reacts);
+        const rawReacts = (msg.reactions === '' || msg.reactions === null) ? '{}' : msg.reactions;
+        const reacts = JSON.parse(rawReacts); const reactKeys = Object.keys(reacts);
         if (reactKeys.length > 0) {
             reactionsHTML = `<div class="reactions-container">`;
             reactKeys.forEach(emoji => { const count = reacts[emoji].length; const iDidIt = reacts[emoji].includes(currentUser); reactionsHTML += `<div class="reaction-pill ${iDidIt ? 'active' : ''}" onclick="window.addReaction(${msg.id}, '${emoji}')">${emoji} <span class="reaction-count">${count}</span></div>`; });
@@ -719,32 +678,16 @@ function appendMessage(msg, isNew = false) {
         }
     } catch (e) { }
 
-    // ТОЧЕЧНОЕ ОБНОВЛЕНИЕ ЗАКРЕПОВ И РЕАКЦИЙ ДЛЯ СУЩЕСТВУЮЩИХ СООБЩЕНИЙ
     if (existing) {
         let wrap = existing.querySelector('.reactions-wrapper');
-        if (!wrap) {
-            wrap = document.createElement('div');
-            wrap.className = 'reactions-wrapper';
-            const contentDiv = existing.querySelector('.message-content') || existing.querySelector('.message-grouped-text');
-            if (contentDiv) contentDiv.appendChild(wrap);
-        }
-
-        // 🔥 ПРОВЕРЯЕМ БЛОКИРОВКУ: Обновляем реакции с сервера, только если мы сами их не трогали последние 1.5 секунды
+        if (!wrap) { wrap = document.createElement('div'); wrap.className = 'reactions-wrapper'; const contentDiv = existing.querySelector('.message-content') || existing.querySelector('.message-grouped-text'); if (contentDiv) contentDiv.appendChild(wrap); }
         const lockTime = parseInt(wrap.dataset.locked || '0');
-        if (Date.now() - lockTime > 1500) {
-            if (msg.reactions !== undefined) {
-                wrap.innerHTML = reactionsHTML;
-            }
-        }
+        if (Date.now() - lockTime > 1500 && msg.reactions !== undefined) wrap.innerHTML = reactionsHTML;
 
         existing.dataset.pinned = msg.is_pinned ? '1' : '0';
         let oldPin = existing.querySelector('.pin-badge');
-        if (msg.is_pinned && !oldPin) {
-            const contentDiv = existing.querySelector('.message-content') || existing.querySelector('.message-grouped-text');
-            if (contentDiv) contentDiv.insertAdjacentHTML('afterbegin', `<div class="pin-badge" style="font-size:10px; color:var(--accent); font-weight:bold; margin-bottom:4px;">📌 Закреплено</div>`);
-        } else if (!msg.is_pinned && oldPin) {
-            oldPin.remove();
-        }
+        if (msg.is_pinned && !oldPin) { const contentDiv = existing.querySelector('.message-content') || existing.querySelector('.message-grouped-text'); if (contentDiv) contentDiv.insertAdjacentHTML('afterbegin', `<div class="pin-badge" style="font-size:10px; color:var(--accent); font-weight:bold; margin-bottom:4px;">📌 Закреплено</div>`); }
+        else if (!msg.is_pinned && oldPin) oldPin.remove();
         return;
     }
 
@@ -803,7 +746,6 @@ function sendMessage() { const text = msgInput.value.trim(); if (!text) return; 
 bindClick('sendBtn', sendMessage); const renderEmojis = () => { if (!el('emojiDropdown')) return; el('emojiDropdown').innerHTML = ''; defaultEmojis.forEach(e => { const span = document.createElement('span'); span.className = 'emoji-item'; span.innerText = e; span.onclick = () => { msgInput.value += e; msgInput.focus(); el('emojiDropdown').style.display = 'none'; }; el('emojiDropdown').appendChild(span); }); }; renderEmojis();
 bindClick('emojiBtn', (e) => { e.stopPropagation(); if (el('emojiDropdown')) el('emojiDropdown').style.display = el('emojiDropdown').style.display === 'none' ? 'flex' : 'none'; });
 
-// ФИКС УМНОГО ПОИСКА: Железобетонный рендер
 function handleMentionInput() {
     if (!msgInput || !el('mentionDropdown')) return;
     const text = msgInput.value; const cursorPos = msgInput.selectionStart;
@@ -812,15 +754,10 @@ function handleMentionInput() {
 
     if (match) {
         const term = match[1].toLowerCase(); currentMentionMatches = [];
-
         if (currentServerObj) {
             if ('everyone'.includes(term)) currentMentionMatches.push({ username: 'everyone', display_name: 'Все на сервере', isRole: true, color: '#F04747' });
             if ('here'.includes(term)) currentMentionMatches.push({ username: 'here', display_name: 'Активные', isRole: true, color: '#FAA61A' });
-
-            if (serverRolesCache) {
-                serverRolesCache.forEach(r => { if (r.name.toLowerCase().includes(term)) currentMentionMatches.push({ username: r.name, display_name: r.name, isRole: true, color: r.color }); });
-            }
-
+            if (serverRolesCache) { serverRolesCache.forEach(r => { if (r.name.toLowerCase().includes(term)) currentMentionMatches.push({ username: r.name, display_name: r.name, isRole: true, color: r.color }); }); }
             serverMembersCache.forEach(m => {
                 if (m.username.toLowerCase().includes(term) && m.username !== currentUser) {
                     const uData = allUsers.find(u => u.username === m.username) || m;
@@ -834,14 +771,8 @@ function handleMentionInput() {
                 }
             });
         }
-
-        if (currentMentionMatches.length > 0) {
-            mentionIndex = 0;
-            renderMentionDropdown();
-        } else el('mentionDropdown').style.display = 'none';
-    } else {
-        el('mentionDropdown').style.display = 'none';
-    }
+        if (currentMentionMatches.length > 0) { mentionIndex = 0; renderMentionDropdown(); } else el('mentionDropdown').style.display = 'none';
+    } else { el('mentionDropdown').style.display = 'none'; }
 }
 
 function handleMentionKeydown(e) {
@@ -854,30 +785,19 @@ function handleMentionKeydown(e) {
 }
 
 function renderMentionDropdown() {
-    const md = el('mentionDropdown');
-    if (!md) return;
-
-    md.style.position = 'absolute';
-    md.style.bottom = 'calc(100% + 10px)';
-    md.style.left = '24px';
-    md.style.zIndex = '999999';
-
+    const md = el('mentionDropdown'); if (!md) return;
+    md.style.position = 'absolute'; md.style.bottom = 'calc(100% + 10px)'; md.style.left = '24px'; md.style.zIndex = '999999';
     md.innerHTML = '<div style="padding: 4px 8px; font-size: 11px; font-weight: bold; color: var(--text-muted); text-transform: uppercase; border-bottom: 1px solid var(--bg-hover); margin-bottom: 4px;">Участники и Роли</div>';
     currentMentionMatches.forEach((u, i) => {
         const div = document.createElement('div'); div.className = `mention-item ${i === mentionIndex ? 'selected' : ''}`;
-        if (u.isRole) {
-            div.innerHTML = `<div style="width:12px;height:12px;border-radius:50%;background:${u.color};margin-right:8px;flex-shrink:0;"></div><span style="color:${u.color}; font-weight:bold;">@${u.display_name}</span>`;
-        } else {
-            div.innerHTML = `<div class="user-avatar-wrap" style="width:24px;height:24px; margin-right:8px;"><div class="user-avatar" style="font-size:10px;"><img src="${u.avatar || ''}" style="display:${u.avatar ? 'block' : 'none'};"> ${!u.avatar ? u.username.charAt(0).toUpperCase() : ''}</div></div><span>${u.display_name || u.username}</span>`;
-        }
+        if (u.isRole) { div.innerHTML = `<div style="width:12px;height:12px;border-radius:50%;background:${u.color};margin-right:8px;flex-shrink:0;"></div><span style="color:${u.color}; font-weight:bold;">@${u.display_name}</span>`; }
+        else { div.innerHTML = `<div class="user-avatar-wrap" style="width:24px;height:24px; margin-right:8px;"><div class="user-avatar" style="font-size:10px;"><img src="${u.avatar || ''}" style="display:${u.avatar ? 'block' : 'none'};"> ${!u.avatar ? u.username.charAt(0).toUpperCase() : ''}</div></div><span>${u.display_name || u.username}</span>`; }
         div.onmousedown = (e) => { e.preventDefault(); selectMention(u.username); };
         div.onmouseenter = () => { mentionIndex = i; renderMentionDropdown(); };
         md.appendChild(div);
     });
     md.style.display = 'flex';
-
-    const selectedEl = md.querySelector('.selected');
-    if (selectedEl) selectedEl.scrollIntoView({ block: 'nearest' });
+    const selectedEl = md.querySelector('.selected'); if (selectedEl) selectedEl.scrollIntoView({ block: 'nearest' });
 }
 
 function selectMention(u) {
@@ -890,7 +810,25 @@ function selectMention(u) {
     msgInput.focus();
 }
 
-async function uploadFile(file, type) { const formData = new FormData(); formData.append('file', file); const res = await fetch('/api/upload', { method: 'POST', body: formData }); const data = await res.json(); if (data.success) socket.emit('send_message', { sender: currentUser, recipient: currentChat, server_id: currentServerObj ? currentServerObj.id : null, content: data.url, type: type, reply_author: replyingTo?.author || '', reply_text: replyingTo?.text || '' }); else showToast('Ошибка загрузки файла!', true); window.cancelReply(); }
+// ФИКС ЗАГРУЗКИ ФАЙЛОВ ДЛЯ CLOUDINARY
+async function uploadFile(file, type) {
+    const formData = new FormData();
+    formData.append('file', file); // Multer на сервере ждет поле 'file'
+    try {
+        const res = await fetch('/api/upload', { method: 'POST', body: formData });
+        const data = await res.json();
+        if (data.success) {
+            // Теперь data.url содержит правильную ссылку от Cloudinary
+            socket.emit('send_message', { sender: currentUser, recipient: currentChat, server_id: currentServerObj ? currentServerObj.id : null, content: data.url, type: type, reply_author: replyingTo?.author || '', reply_text: replyingTo?.text || '' });
+        } else {
+            showToast('Ошибка загрузки файла!', true);
+        }
+    } catch (e) {
+        showToast('Сервер не отвечает', true);
+    }
+    window.cancelReply();
+}
+
 bindChange('fileInput', function (e) { const file = e.target.files[0]; if (!file) return; let type = 'text'; if (file.type.startsWith('image/')) type = 'image'; else if (file.type.startsWith('video/')) type = 'video'; else if (file.type.startsWith('audio/')) type = 'audio'; uploadFile(file, type); });
 
 let mediaRecorder, audioChunks = []; const micBtn = el('micBtn');
@@ -912,7 +850,7 @@ document.addEventListener('ended', (e) => { if (e.target.tagName === 'VIDEO' || 
 window.openAudioMenu = (btn, event) => { event.stopPropagation(); const wrapper = btn.closest('.custom-audio-wrapper'); const audio = wrapper.querySelector('audio'); ctxMenu.innerHTML = `<div class="context-menu-item" onclick="window.setAudioSpeed('${audio.id}', 1)">🐌 Скорость: 1x</div><div class="context-menu-item" onclick="window.setAudioSpeed('${audio.id}', 1.5)">🏃 Скорость: 1.5x</div><div class="context-menu-item" onclick="window.setAudioSpeed('${audio.id}', 2)">🚀 Скорость: 2x</div><a href="${audio.src}" download class="context-menu-item" style="text-decoration:none; color: var(--accent);">📥 Скачать ГС</a>`; ctxMenu.style.display = 'block'; requestAnimationFrame(() => { const rect = ctxMenu.getBoundingClientRect(); let top = event.clientY; let left = event.clientX; if (top + rect.height > window.innerHeight) top -= rect.height; if (left + rect.width > window.innerWidth) left -= rect.width; ctxMenu.style.top = top + 'px'; ctxMenu.style.left = left + 'px'; }); };
 window.setAudioSpeed = (id, speed) => { const audio = el(id); if (audio) audio.playbackRate = speed; if (ctxMenu) ctxMenu.style.display = 'none'; showToast(`Скорость ГС: ${speed}x`); };
 
-
+// ФИКС ПКМ-МЕНЮ (КНОПКА КОПИРОВАНИЯ)
 document.addEventListener('contextmenu', e => {
     let html = '';
     const menu = el('customContextMenu'); if (!menu) return;
@@ -925,10 +863,25 @@ document.addEventListener('contextmenu', e => {
         myRoles.forEach(rId => { const r = serverRolesCache.find(x => x.id == rId); if (r) { if (r.can_manage_channels) iCanManageChannels = true; if (r.can_manage_messages) iCanManageMessages = true; } });
     }
 
-    if (e.target === msgInput && msgInput.selectionStart !== msgInput.selectionEnd) { e.preventDefault(); html = `<div class="context-menu-item" onclick="window.formatInput('**')"><strong>Жирный</strong></div><div class="context-menu-item" onclick="window.formatInput('*')"><em>Курсив</em></div><div class="context-menu-item" onclick="window.formatInput('~~')"><s>Зачеркнутый</s></div><div class="context-menu-item" onclick="window.formatInput('> ', true)">💬 Цитата</div>`; }
+    if (e.target === msgInput && msgInput.selectionStart !== msgInput.selectionEnd) {
+        e.preventDefault();
+        html = `<div class="context-menu-item" onclick="window.formatInput('**')"><strong>Жирный</strong></div><div class="context-menu-item" onclick="window.formatInput('*')"><em>Курсив</em></div><div class="context-menu-item" onclick="window.formatInput('~~')"><s>Зачеркнутый</s></div><div class="context-menu-item" onclick="window.formatInput('> ', true)">💬 Цитата</div>`;
+    }
     else if (e.target.closest('.message-group') || e.target.closest('.message-grouped-item')) {
-        e.preventDefault(); const msgEl = e.target.closest('.message-group') || e.target.closest('.message-grouped-item'); const isMine = msgEl.dataset.sender === currentUser; const msgId = msgEl.id.split('-')[1]; const author = msgEl.querySelector('.message-author')?.innerText || lastSender; const isPinned = msgEl.dataset.pinned === '1';
-        html = `<div class="context-menu-item" onclick="window.startReply('${author}', '${msgEl.querySelector('.message-text')?.innerText.substring(0, 30).replace(/'/g, "\\'") || 'Медиафайл'}')">↩ Ответить</div>`;
+        e.preventDefault();
+        const msgEl = e.target.closest('.message-group') || e.target.closest('.message-grouped-item');
+        const isMine = msgEl.dataset.sender === currentUser;
+        const msgId = msgEl.id.split('-')[1];
+        const author = msgEl.querySelector('.message-author')?.innerText || lastSender;
+        const isPinned = msgEl.dataset.pinned === '1';
+
+        const rawText = msgEl.querySelector('.message-text')?.innerText || '';
+        const safeTextToCopy = rawText.replace(/'/g, "\\'").replace(/\n/g, "\\n");
+        const shortText = rawText.substring(0, 30).replace(/'/g, "\\'") || 'Медиафайл';
+
+        // Кнопки ответа и копирования
+        html = `<div class="context-menu-item" onclick="navigator.clipboard.writeText('${safeTextToCopy}'); showToast('Текст скопирован!')">📋 Копировать</div>`;
+        html += `<div class="context-menu-item" onclick="window.startReply('${author}', '${shortText}')">↩ Ответить</div>`;
 
         let reactsHtml = `<div style="display:flex; gap:8px; padding:4px 8px; justify-content:center;">`;
         defaultEmojis.slice(0, 5).forEach(em => { reactsHtml += `<span style="cursor:pointer; font-size:20px; transition:0.2s;" onclick="window.addReaction(${msgId}, '${em}')" onmouseover="this.style.transform='scale(1.3)'" onmouseout="this.style.transform='scale(1)'">${em}</span>`; });
