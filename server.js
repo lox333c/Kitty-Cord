@@ -12,6 +12,16 @@ const app = express();
 app.use(cors());
 app.use(express.json()); // ВАЖНО: без этого сервер не сможет читать JSON в запросах реакций!
 
+const path = require('path'); // Если этой строки нет в самом верху — добавь
+
+// Говорим серверу, что папка 'public' — это место, где лежит наш сайт
+app.use(express.static(path.join(__dirname, 'public')));
+
+// Добавляем главный маршрут, чтобы по адресу '/' открывался index.html
+app.get('/', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
 const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: "*" } });
 
