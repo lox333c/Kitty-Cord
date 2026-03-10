@@ -245,20 +245,36 @@ function renderRightMembersPanel() {
     }
 }
 
+// 🚀 МАССИВНОЕ УСКОРЕНИЕ: Убиваем задержку загрузки сервера
 window.loadServer = async (serverId) => {
+    // 1. МГНОВЕННАЯ СМЕНА UI (без ожидания сети)
     document.querySelectorAll('.server-icon').forEach(e => e.classList.remove('active'));
-    const btn = el(`server-btn-${serverId}`); if (btn) btn.classList.add('active');
-
-    const infoRes = await fetch(`/api/servers/info/${serverId}`); const infoData = await infoRes.json();
-    currentServerObj = infoData.success ? infoData.server : null; if (!currentServerObj) return;
-
-    await fetchServerData(serverId);
-    renderRightMembersPanel();
+    const btn = el(`server-btn-${serverId}`);
+    if (btn) btn.classList.add('active');
 
     el('serverChannels').style.display = 'block';
     el('dmSection').style.display = 'none';
-    el('panelTitle').innerText = currentServerObj.name;
     el('serverHeaderChevron').style.display = 'inline';
+
+    if (btn) el('panelTitle').innerText = btn.dataset.tooltip || 'Загрузка...';
+
+    const chList = el('serverChannelsList');
+    chList.innerHTML = '<div style="padding:10px; color:var(--text-muted); font-size:12px; text-align:center;">Загрузка каналов...</div>';
+    el('rightMembersList').innerHTML = ''; // Сразу очищаем прошлый список
+
+    // 2. ПАРАЛЛЕЛЬНЫЕ ЗАПРОСЫ (Качаем инфу, каналы и роли ОДНОВРЕМЕННО)
+    const [infoRes, channelsRes] = await Promise.all([
+        fetch(`/api/servers/info/${serverId}`),
+        fetch(`/api/servers/${serverId}/channels`),
+        fetchServerData(serverId) // Эта функция сама по себе тоже работает
+    ]);
+
+    const infoData = await infoRes.json();
+    currentServerObj = infoData.success ? infoData.server : null;
+    if (!currentServerObj) return;
+
+    el('panelTitle').innerText = currentServerObj.name;
+    renderRightMembersPanel();
 
     const myRoles = getUserRoles(currentUser);
     let iCanManageChannels = false;
@@ -268,9 +284,9 @@ window.loadServer = async (serverId) => {
 
     if (el('addChannelBtn')) el('addChannelBtn').style.display = iCanManageChannels ? 'block' : 'none';
 
-    const res = await fetch(`/api/servers/${serverId}/channels`); const data = await res.json();
+    const data = await channelsRes.json();
     channelsCache = data.channels || [];
-    const chList = el('serverChannelsList'); chList.innerHTML = '';
+    chList.innerHTML = '';
     let firstAllowedChannel = null;
 
     if (channelsCache.length > 0) {
@@ -476,17 +492,13 @@ bindClick('createRoleBtn', async () => {
 window.deleteRole = function (roleId) { showConfirm('Удалить роль?', 'Это действие нельзя отменить.', 'Удалить', async () => { await fetch('/api/roles/delete', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ role_id: roleId, server_id: currentServerObj.id }) }); }); };
 window.toggleRole = async (username, roleId) => { if (!roleId) return; const member = serverMembersCache.find(m => m.username === username); if (!member) return; let rIds = JSON.parse(member.roles || '[]'); if (rIds.includes(roleId.toString())) rIds = rIds.filter(id => id != roleId); else rIds.push(roleId.toString()); await fetch('/api/members/roles/update', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ server_id: currentServerObj.id, username, roles: rIds }) }); };
 
-// Обновление бейджей и заголовка окна
 function updateHomeBadge() {
     let total = pendingFriendRequests;
     for (let c in unreadCounts) { if (c !== 'general' && !c.startsWith('channel_')) total += unreadCounts[c]; }
     const hb = el('badge-home');
     if (hb) { if (total > 0) { hb.innerText = total; hb.style.display = 'block'; } else hb.style.display = 'none'; }
 
-    // Закидываем уведомления в Title окна (очень заметно)
     document.title = total > 0 ? `(${total > 9 ? '9+' : total}) KittyCord` : `KittyCord`;
-
-    // Бейдж на иконке панели задач (если поддерживает ОС)
     if (navigator.setAppBadge) {
         if (total > 0) navigator.setAppBadge(total > 9 ? 9 : total).catch(console.error);
         else navigator.clearAppBadge().catch(console.error);
@@ -497,7 +509,6 @@ bindClick('btnHome', () => { currentServerObj = null; el('membersPanel').style.d
 bindClick('btnGeneral', () => { currentServerObj = null; el('membersPanel').style.display = 'none'; el('serverHeaderChevron').style.display = 'none'; el('btnHome').classList.remove('active'); el('btnGeneral').classList.add('active'); document.querySelectorAll('.server-icon').forEach(e => e.classList.remove('active')); el('serverChannels').style.display = 'block'; el('dmSection').style.display = 'none'; el('panelTitle').innerText = 'Kitty Server'; if (el('addChannelBtn')) el('addChannelBtn').style.display = 'none'; el('serverChannelsList').innerHTML = `<div class="channel" onclick="window.loadChat('general', true)" id="ui-general"><span class="name"># общий-чат</span></div>`; window.loadChat('general', true); });
 function openFriendsMenu() { currentChat = 'friends'; document.querySelectorAll('.channel, .dm-user').forEach(e => e.classList.remove('active')); el('btnFriendsMenu').classList.add('active'); el('chatArea').style.display = 'none'; el('friendsArea').style.display = 'flex'; fetchFriends(); window.cancelReply(); }
 
-// Заглушка загрузки чата, чтобы не было дерганий
 window.loadChat = function (chatName, canSend = true) {
     currentChat = chatName;
     if (chatName === 'general') { el('chatTitle').innerText = '# общий-чат'; el('membersPanel').style.display = 'none'; }
@@ -527,7 +538,6 @@ window.loadChat = function (chatName, canSend = true) {
     if (canSend) { el('chatInputArea').style.display = 'flex'; el('chatNoAccessArea').style.display = 'none'; }
     else { el('chatInputArea').style.display = 'none'; el('chatNoAccessArea').style.display = 'block'; }
 
-    // Заглушка, пока не придет история
     if (messagesContainer) messagesContainer.innerHTML = '<div style="display:flex; height:100%; align-items:center; justify-content:center; color:var(--text-muted); font-size:14px;">Загрузка сообщений...</div>';
     socket.emit('get_history', { username: currentUser, chatWith: currentChat });
 };
@@ -551,7 +561,6 @@ function incrementBadge(chatId, isPing = false, avatarData = null, serverId = nu
     }
     updateHomeBadge(); playPingSound();
 
-    // Детальное Push-уведомление от Windows
     if (!document.hasFocus() && Notification.permission === "granted" && fullMsg) {
         const authorName = fullMsg.display_name || fullMsg.sender;
         const title = isPing ? `Упоминание от ${authorName}` : `Новое сообщение от ${authorName}`;
@@ -719,14 +728,13 @@ function appendMessage(msg, isNew = false) {
 
     const safeContent = msg.content ? String(msg.content) : '';
     let cHTML = '';
-    // Фикс подпрыгивания: Картинка загружается плавно, не ломая верстку
     if (msg.type === 'image') cHTML = `<img src="${safeContent}" class="message-image" onload="if(${isNew}) document.getElementById('chat').scrollTop = document.getElementById('chat').scrollHeight;" onclick="openLightbox('${safeContent}', '${msg.sender}', '${timeStr}')" style="min-height:100px; max-height:300px; border-radius:8px; background:var(--bg-servers);">`;
     else if (msg.type === 'video') cHTML = `<div class="custom-video-wrapper"><video src="${safeContent}" class="message-video" preload="metadata"></video><div class="video-overlay-play">▶</div><div class="custom-video-controls"><button class="play-pause-btn">▶</button><span class="video-time">0:00 / 0:00</span><input type="range" class="video-progress" value="0" min="0" max="100" step="0.1"><a href="${safeContent}" download class="dl-video-btn" title="Скачать">📥</a><button class="fullscreen-btn" title="На весь экран">⛶</button></div></div>`;
     else if (msg.type === 'audio') cHTML = `<div class="custom-audio-wrapper"><button class="play-pause-btn audio-play-btn">▶</button><div class="audio-progress-container"><input type="range" class="audio-progress video-progress" value="0" min="0" max="100" step="0.1"></div><span class="audio-time">0:00</span><button class="audio-dots-btn" onclick="window.openAudioMenu(this, event)">⋮</button><audio id="audio-${msg.id}" src="${safeContent}" preload="auto" style="display:none;"></audio></div>`;
     else cHTML = `<div class="message-text">${formatText(safeContent)}</div>`;
 
     const aName = msg.display_name || msg.sender;
-    const roleColor = getUserTopRole(msg.sender)?.color || 'var(--text-main)'; // Фикс цвета ника
+    const roleColor = getUserTopRole(msg.sender)?.color || 'var(--text-main)';
     let replyHTML = msg.reply_author ? `<div class="reply-badge">Ответ <span style="font-weight:bold;color:var(--text-main);">${msg.reply_author}</span>: ${msg.reply_text.substring(0, 30)}</div>` : '';
     let pinHTML = msg.is_pinned ? `<div class="pin-badge" style="font-size:10px; color:var(--accent); font-weight:bold; margin-bottom:4px;">📌 Закреплено</div>` : '';
 
@@ -847,10 +855,9 @@ async function uploadFile(file, type) {
     const formData = new FormData();
     formData.append('file', file);
 
-    // UX защита от лагов
     showToast('⏳ Отправка медиа...', false);
     msgInput.disabled = true;
-    msgInput.placeholder = 'Отправляем...';
+    msgInput.placeholder = 'Отправляем файл...';
 
     try {
         const res = await fetch('/api/upload', { method: 'POST', body: formData });

@@ -2068,3 +2068,81 @@ body {
 #profileModal {
     z-index: 99999 !important;
 }
+
+/* ========================================================
+   ФИКС СЕРВЕРОВ: Белая полоска и квадратные аватарки
+   ======================================================== */
+#myServersList {
+    position: relative;
+}
+
+#myServersList .server-icon {
+    position: relative;
+    background: transparent !important;
+    /* Убиваем старый фон по краям */
+    border: none !important;
+    margin-bottom: 8px;
+    cursor: pointer;
+}
+
+/* 1. Та самая белая штучка слева (индикатор) */
+#myServersList .server-icon::before {
+    content: '';
+    position: absolute;
+    left: -12px;
+    /* Сдвиг влево (подгони под свой отступ, если надо) */
+    top: 50%;
+    transform: translateY(-50%);
+    width: 8px;
+    height: 8px;
+    background: white;
+    border-radius: 0 4px 4px 0;
+    opacity: 0;
+    transition: all 0.2s ease;
+}
+
+#myServersList .server-icon:hover::before {
+    opacity: 1;
+    height: 20px;
+    /* При наведении полоска вытягивается */
+}
+
+#myServersList .server-icon.active::before {
+    opacity: 1;
+    height: 40px;
+    /* У выбранного сервера полоска на всю высоту */
+}
+
+/* 2. Круглая аватарка/заглушка */
+#myServersList .server-icon .user-avatar {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    /* По умолчанию круг */
+    background-color: var(--bg-hover, #36393f);
+    color: var(--text-main, white);
+    transition: all 0.2s ease;
+    /* Плавное превращение */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 20px;
+    overflow: hidden;
+}
+
+/* 3. Магия скругления: круг -> сквадрат (squircle) + полная заливка цветом */
+#myServersList .server-icon:hover .user-avatar,
+#myServersList .server-icon.active .user-avatar {
+    border-radius: 16px;
+    /* Уголки как в Discord */
+    background-color: var(--accent, #5865F2);
+    color: white;
+}
+
+/* Картинка внутри аватарки тоже должна наследовать новую форму */
+#myServersList .server-icon .user-avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    border-radius: inherit;
+}
