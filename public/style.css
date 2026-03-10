@@ -2146,3 +2146,11 @@ body {
     object-fit: cover;
     border-radius: inherit;
 }
+
+/* Сообщения в процессе отправки */
+.temp-msg {
+    opacity: 0.5;
+    pointer-events: none;
+    /* Пока не отправится, нельзя нажать */
+    transition: opacity 0.3s ease;
+}

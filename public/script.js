@@ -63,24 +63,17 @@ function formatText(text) {
     if (!text) return '';
     let s = String(text).replace(/</g, "&lt;").replace(/>/g, "&gt;");
     s = s.replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>").replace(/\*(.*?)\*/g, "<em>$1</em>").replace(/~~(.*?)~~/g, "<s>$1</s>").replace(/^&gt;\s?(.*)/gm, "<blockquote>$1</blockquote>");
-
     s = s.replace(/@([a-zA-Zа-яА-Я0-9_]+)/gi, (match, name) => {
         const lowerName = name.toLowerCase();
         if (lowerName === 'everyone') return '<span class="mention mention-everyone">@everyone</span>';
         if (lowerName === 'here') return '<span class="mention mention-here">@here</span>';
-
         if (currentServerObj && serverRolesCache && serverRolesCache.length > 0) {
             const roleObj = serverRolesCache.find(r => r.name.toLowerCase() === lowerName);
             if (roleObj) return `<span class="mention" style="color:${roleObj.color}; background-color:${roleObj.color}20;" onclick="window.openProfile('${name}')">@${roleObj.name}</span>`;
         }
-
         let userExists = false;
-        if (currentServerObj && serverMembersCache) {
-            userExists = serverMembersCache.some(m => m.username.toLowerCase() === lowerName);
-        } else {
-            userExists = allUsers.some(u => u.username.toLowerCase() === lowerName);
-        }
-
+        if (currentServerObj && serverMembersCache) userExists = serverMembersCache.some(m => m.username.toLowerCase() === lowerName);
+        else userExists = allUsers.some(u => u.username.toLowerCase() === lowerName);
         if (userExists) {
             const isMe = lowerName === currentUser.toLowerCase();
             return `<span class="mention ${isMe ? 'mention-me' : ''}" onclick="window.openProfile('${name}')">@${name}</span>`;
@@ -92,10 +85,7 @@ function formatText(text) {
 
 window.formatInput = function (syntax, isPrefix = false) {
     if (!msgInput) return;
-    const start = msgInput.selectionStart;
-    const end = msgInput.selectionEnd;
-    const text = msgInput.value;
-    const selectedText = text.substring(start, end);
+    const start = msgInput.selectionStart; const end = msgInput.selectionEnd; const text = msgInput.value; const selectedText = text.substring(start, end);
     if (isPrefix) msgInput.value = text.substring(0, start) + syntax + selectedText + text.substring(end);
     else msgInput.value = text.substring(0, start) + syntax + selectedText + syntax + text.substring(end);
     if (ctxMenu) ctxMenu.style.display = 'none';
@@ -105,19 +95,9 @@ window.formatInput = function (syntax, isPrefix = false) {
 };
 
 window.onload = async () => {
-    messagesContainer = el('chat');
-    ctxMenu = el('customContextMenu');
-    msgInput = el('msgInput');
-
-    if (msgInput) {
-        msgInput.addEventListener('input', handleMentionInput);
-        msgInput.addEventListener('keydown', handleMentionKeydown);
-    }
-
-    if (Notification.permission !== 'granted' && Notification.permission !== 'denied') {
-        Notification.requestPermission();
-    }
-
+    messagesContainer = el('chat'); ctxMenu = el('customContextMenu'); msgInput = el('msgInput');
+    if (msgInput) { msgInput.addEventListener('input', handleMentionInput); msgInput.addEventListener('keydown', handleMentionKeydown); }
+    if (Notification.permission !== 'granted' && Notification.permission !== 'denied') Notification.requestPermission();
     const savedUser = localStorage.getItem('kitty_user');
     if (savedUser) {
         const res = await fetch('/api/autologin', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: savedUser }) });
@@ -134,19 +114,15 @@ async function auth(action) {
     if (data.success) { localStorage.setItem('kitty_user', data.username); finishLogin(data); }
     else el('authError').innerText = data.error;
 }
-bindClick('loginBtn', () => auth('login'));
-bindClick('registerBtn', () => auth('register'));
+bindClick('loginBtn', () => auth('login')); bindClick('registerBtn', () => auth('register'));
 
 async function finishLogin(data) {
     currentUser = data.username; currentAvatar = data.avatar; currentBio = data.bio || '';
     myProfileData = { display_name: data.display_name, banner_color: data.banner_color, banner_image: data.banner_image, custom_status: data.custom_status, activity: data.activity, social_links: data.social_links, pronouns: data.pronouns };
     if (el('myUsername')) el('myUsername').innerText = myProfileData.display_name || currentUser;
     updateAvatarDisplay('myAvatarDisplay', currentAvatar, currentUser);
-
     fetchUsers(); fetchDMs(); fetchFriends(); fetchServers();
-
-    el('auth-screen').style.display = 'none';
-    el('app-container').style.display = 'flex';
+    el('auth-screen').style.display = 'none'; el('app-container').style.display = 'flex';
     openFriendsMenu();
 }
 
@@ -165,28 +141,10 @@ async function fetchServers() {
 
 bindClick('btnAddServer', () => el('serverModal').style.display = 'flex');
 bindClick('closeServerModal', () => el('serverModal').style.display = 'none');
+bindClick('createServerBtn', async () => { const name = el('newServerName').value.trim(); if (!name) return showToast('Введите название!', true); const res = await fetch('/api/servers/create', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, owner: currentUser }) }); const data = await res.json(); if (data.success) { showToast(`Сервер создан!`); el('newServerName').value = ''; el('serverModal').style.display = 'none'; fetchServers(); } });
+bindClick('joinServerBtn', async () => { const code = el('inviteCodeInput').value.trim(); if (!code) return showToast('Введите код!', true); const res = await fetch('/api/servers/join', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ invite_code: code, username: currentUser }) }); const data = await res.json(); if (data.success) { showToast(`Успешный вход!`); el('inviteCodeInput').value = ''; el('serverModal').style.display = 'none'; fetchServers(); } else showToast(data.error, true); });
 
-bindClick('createServerBtn', async () => {
-    const name = el('newServerName').value.trim(); if (!name) return showToast('Введите название!', true);
-    const res = await fetch('/api/servers/create', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, owner: currentUser }) });
-    const data = await res.json();
-    if (data.success) { showToast(`Сервер создан!`); el('newServerName').value = ''; el('serverModal').style.display = 'none'; fetchServers(); }
-});
-
-bindClick('joinServerBtn', async () => {
-    const code = el('inviteCodeInput').value.trim(); if (!code) return showToast('Введите код!', true);
-    const res = await fetch('/api/servers/join', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ invite_code: code, username: currentUser }) });
-    const data = await res.json();
-    if (data.success) { showToast(`Успешный вход!`); el('inviteCodeInput').value = ''; el('serverModal').style.display = 'none'; fetchServers(); }
-    else showToast(data.error, true);
-});
-
-window.leaveServer = (srvId) => {
-    showConfirm('Покинуть сервер?', 'Вы точно хотите выйти?', 'Выйти', async () => {
-        await fetch('/api/servers/leave', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ server_id: srvId, username: currentUser }) });
-        el('btnHome').click(); fetchServers();
-    });
-};
+window.leaveServer = (srvId) => { showConfirm('Покинуть сервер?', 'Вы точно хотите выйти?', 'Выйти', async () => { await fetch('/api/servers/leave', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ server_id: srvId, username: currentUser }) }); el('btnHome').click(); fetchServers(); }); };
 
 async function fetchServerData(serverId) {
     const [rolesRes, memRes] = await Promise.all([fetch(`/api/servers/${serverId}/roles`), fetch(`/api/servers/${serverId}/members`)]);
@@ -203,28 +161,19 @@ function getUserRoles(username) {
 }
 
 function getUserTopRole(username) {
-    if (!currentServerObj) return null;
-    const rIds = getUserRoles(username);
-    if (rIds.length === 0) return null;
+    if (!currentServerObj) return null; const rIds = getUserRoles(username); if (rIds.length === 0) return null;
     return serverRolesCache.find(r => rIds.includes(r.id.toString())) || null;
 }
 
 function renderRightMembersPanel() {
     const container = el('rightMembersList'); if (!container) return;
-    container.innerHTML = '';
-    if (!currentServerObj) { el('membersPanel').style.display = 'none'; return; }
+    container.innerHTML = ''; if (!currentServerObj) { el('membersPanel').style.display = 'none'; return; }
     el('membersPanel').style.display = 'flex';
-
     const groups = {}; serverRolesCache.forEach(r => groups[r.id] = []); const noRole = [];
-
     serverMembersCache.forEach(m => {
         const rIds = JSON.parse(m.roles || '[]');
-        if (rIds.length > 0) {
-            const role = serverRolesCache.find(r => rIds.includes(r.id.toString()));
-            if (role && groups[role.id]) groups[role.id].push(m); else noRole.push(m);
-        } else { noRole.push(m); }
+        if (rIds.length > 0) { const role = serverRolesCache.find(r => rIds.includes(r.id.toString())); if (role && groups[role.id]) groups[role.id].push(m); else noRole.push(m); } else { noRole.push(m); }
     });
-
     serverRolesCache.forEach(r => {
         const members = groups[r.id];
         if (members && members.length > 0) {
@@ -235,7 +184,6 @@ function renderRightMembersPanel() {
             });
         }
     });
-
     if (noRole.length > 0) {
         container.insertAdjacentHTML('beforeend', `<div class="role-group-header">В сети — ${noRole.length}</div>`);
         noRole.forEach(m => {
@@ -245,95 +193,66 @@ function renderRightMembersPanel() {
     }
 }
 
-// 🚀 МАССИВНОЕ УСКОРЕНИЕ: Убиваем задержку загрузки сервера
-window.loadServer = async (serverId) => {
-    // 1. МГНОВЕННАЯ СМЕНА UI (без ожидания сети)
+window.loadServer = function (serverId) {
     document.querySelectorAll('.server-icon').forEach(e => e.classList.remove('active'));
-    const btn = el(`server-btn-${serverId}`);
-    if (btn) btn.classList.add('active');
+    const btn = el(`server-btn-${serverId}`); if (btn) btn.classList.add('active');
 
     el('serverChannels').style.display = 'block';
     el('dmSection').style.display = 'none';
     el('serverHeaderChevron').style.display = 'inline';
-
     if (btn) el('panelTitle').innerText = btn.dataset.tooltip || 'Загрузка...';
 
     const chList = el('serverChannelsList');
-    chList.innerHTML = '<div style="padding:10px; color:var(--text-muted); font-size:12px; text-align:center;">Загрузка каналов...</div>';
-    el('rightMembersList').innerHTML = ''; // Сразу очищаем прошлый список
+    chList.innerHTML = '<div style="padding:10px; color:var(--text-muted); font-size:12px; text-align:center;">Загрузка...</div>';
+    el('rightMembersList').innerHTML = '';
 
-    // 2. ПАРАЛЛЕЛЬНЫЕ ЗАПРОСЫ (Качаем инфу, каналы и роли ОДНОВРЕМЕННО)
-    const [infoRes, channelsRes] = await Promise.all([
-        fetch(`/api/servers/info/${serverId}`),
-        fetch(`/api/servers/${serverId}/channels`),
-        fetchServerData(serverId) // Эта функция сама по себе тоже работает
-    ]);
+    Promise.all([
+        fetch(`/api/servers/info/${serverId}`).then(r => r.json()),
+        fetch(`/api/servers/${serverId}/channels`).then(r => r.json()),
+        fetchServerData(serverId)
+    ]).then(([infoData, channelsData]) => {
+        currentServerObj = infoData.success ? infoData.server : null; if (!currentServerObj) return;
 
-    const infoData = await infoRes.json();
-    currentServerObj = infoData.success ? infoData.server : null;
-    if (!currentServerObj) return;
+        el('panelTitle').innerText = currentServerObj.name;
+        renderRightMembersPanel();
 
-    el('panelTitle').innerText = currentServerObj.name;
-    renderRightMembersPanel();
+        const myRoles = getUserRoles(currentUser); let iCanManageChannels = false;
+        if (currentServerObj.owner === currentUser) { iCanManageChannels = true; } else { myRoles.forEach(rId => { const r = serverRolesCache.find(x => x.id == rId); if (r && r.can_manage_channels) iCanManageChannels = true; }); }
+        if (el('addChannelBtn')) el('addChannelBtn').style.display = iCanManageChannels ? 'block' : 'none';
 
-    const myRoles = getUserRoles(currentUser);
-    let iCanManageChannels = false;
+        channelsCache = channelsData.channels || []; chList.innerHTML = ''; let firstAllowedChannel = null;
 
-    if (currentServerObj.owner === currentUser) { iCanManageChannels = true; }
-    else { myRoles.forEach(rId => { const r = serverRolesCache.find(x => x.id == rId); if (r && r.can_manage_channels) iCanManageChannels = true; }); }
-
-    if (el('addChannelBtn')) el('addChannelBtn').style.display = iCanManageChannels ? 'block' : 'none';
-
-    const data = await channelsRes.json();
-    channelsCache = data.channels || [];
-    chList.innerHTML = '';
-    let firstAllowedChannel = null;
-
-    if (channelsCache.length > 0) {
-        channelsCache.forEach(c => {
-            let perms = {}; try { perms = JSON.parse(c.permissions || '{}'); } catch (e) { }
-            if (!perms.everyone) perms.everyone = { view: true, send: true };
-
-            let canView = perms.everyone.view !== false;
-            let canSend = perms.everyone.send !== false;
-
-            if (iCanManageChannels || currentServerObj.owner === currentUser) {
-                canView = true; canSend = true;
-            } else {
-                let roleAllowView = false, roleAllowSend = false;
-                myRoles.forEach(rid => {
-                    if (perms.roles && perms.roles[rid]) {
-                        if (perms.roles[rid].view === true) roleAllowView = true;
-                        if (perms.roles[rid].send === true) roleAllowSend = true;
-                    }
-                });
-                if (perms.everyone.view === false && roleAllowView) canView = true;
-                if (perms.everyone.send === false && roleAllowSend) canSend = true;
-            }
-
-            if (canView) {
-                const isPriv = !perms.everyone.view; const lockIcon = isPriv ? '🔒 ' : ''; const chId = `channel_${c.id}`;
-                const permsStrEncoded = c.permissions ? encodeURIComponent(c.permissions) : '%7B%7D';
-                const actionsHTML = iCanManageChannels ? `<div class="channel-actions"><span class="action-icon-small" title="Настройки" onclick="event.stopPropagation(); window.openChannelSettings(${c.id}, '${c.name.replace(/'/g, "\\'")}', '${permsStrEncoded}')">⚙️</span><span class="action-icon-small del" title="Удалить" onclick="event.stopPropagation(); window.deleteChannel(${c.id})">✖</span></div>` : '';
-
-                if (!firstAllowedChannel) firstAllowedChannel = chId;
-                chList.insertAdjacentHTML('beforeend', `<div class="channel" onclick="window.loadChat('${chId}', ${canSend})" id="ui-${chId}"><span class="name">${lockIcon}# ${c.name}</span><span class="badge-inline" id="badge-${chId}" style="display:none; margin-left:auto; margin-right: ${actionsHTML ? '45px' : '0'};">0</span>${actionsHTML}</div>`);
-            }
-        });
-
-        if (firstAllowedChannel) window.loadChat(firstAllowedChannel, true);
-        else { el('chatTitle').innerText = 'Нет доступа'; messagesContainer.innerHTML = ''; el('friendsArea').style.display = 'none'; el('chatArea').style.display = 'flex'; el('chatInputArea').style.display = 'none'; el('chatNoAccessArea').style.display = 'block'; }
-    }
+        if (channelsCache.length > 0) {
+            channelsCache.forEach(c => {
+                let perms = {}; try { perms = JSON.parse(c.permissions || '{}'); } catch (e) { }
+                if (!perms.everyone) perms.everyone = { view: true, send: true };
+                let canView = perms.everyone.view !== false; let canSend = perms.everyone.send !== false;
+                if (iCanManageChannels || currentServerObj.owner === currentUser) { canView = true; canSend = true; }
+                else {
+                    let roleAllowView = false, roleAllowSend = false;
+                    myRoles.forEach(rid => { if (perms.roles && perms.roles[rid]) { if (perms.roles[rid].view === true) roleAllowView = true; if (perms.roles[rid].send === true) roleAllowSend = true; } });
+                    if (perms.everyone.view === false && roleAllowView) canView = true;
+                    if (perms.everyone.send === false && roleAllowSend) canSend = true;
+                }
+                if (canView) {
+                    const isPriv = !perms.everyone.view; const lockIcon = isPriv ? '🔒 ' : ''; const chId = `channel_${c.id}`;
+                    const permsStrEncoded = c.permissions ? encodeURIComponent(c.permissions) : '%7B%7D';
+                    const actionsHTML = iCanManageChannels ? `<div class="channel-actions"><span class="action-icon-small" title="Настройки" onclick="event.stopPropagation(); window.openChannelSettings(${c.id}, '${c.name.replace(/'/g, "\\'")}', '${permsStrEncoded}')">⚙️</span><span class="action-icon-small del" title="Удалить" onclick="event.stopPropagation(); window.deleteChannel(${c.id})">✖</span></div>` : '';
+                    if (!firstAllowedChannel) firstAllowedChannel = chId;
+                    chList.insertAdjacentHTML('beforeend', `<div class="channel" onclick="window.loadChat('${chId}', ${canSend})" id="ui-${chId}"><span class="name">${lockIcon}# ${c.name}</span><span class="badge-inline" id="badge-${chId}" style="display:none; margin-left:auto; margin-right: ${actionsHTML ? '45px' : '0'};">0</span>${actionsHTML}</div>`);
+                }
+            });
+            if (firstAllowedChannel) window.loadChat(firstAllowedChannel, true);
+            else { el('chatTitle').innerText = 'Нет доступа'; messagesContainer.innerHTML = ''; el('friendsArea').style.display = 'none'; el('chatArea').style.display = 'flex'; el('chatInputArea').style.display = 'none'; el('chatNoAccessArea').style.display = 'block'; }
+        }
+    });
 };
 
 bindClick('serverHeader', () => {
     if (!currentServerObj) return; const drop = el('serverDropdown'); drop.style.display = drop.style.display === 'none' ? 'block' : 'none';
     let iCanManageChannels = false;
     if (currentServerObj.owner === currentUser) iCanManageChannels = true;
-    else {
-        const myRoles = getUserRoles(currentUser);
-        myRoles.forEach(rId => { const r = serverRolesCache.find(x => x.id == rId); if (r && r.can_manage_channels) iCanManageChannels = true; });
-    }
+    else { const myRoles = getUserRoles(currentUser); myRoles.forEach(rId => { const r = serverRolesCache.find(x => x.id == rId); if (r && r.can_manage_channels) iCanManageChannels = true; }); }
     el('dropdownSettings').style.display = (currentServerObj.owner === currentUser) ? 'flex' : 'none';
     el('dropdownCreateChannel').style.display = iCanManageChannels ? 'flex' : 'none';
     el('dropdownSeparator').style.display = iCanManageChannels ? 'block' : 'none';
@@ -342,153 +261,57 @@ bindClick('serverHeader', () => {
 
 bindClick('dropdownInvite', () => { navigator.clipboard.writeText(currentServerObj.invite_code); showToast('Инвайт скопирован!'); el('serverDropdown').style.display = 'none'; });
 bindClick('dropdownSettings', () => { window.openServerSettings(currentServerObj.id); });
-
 bindClick('dropdownCreateChannel', () => {
     const rs = el('channelRolesSelect'); rs.innerHTML = '';
     serverRolesCache.forEach(r => { rs.insertAdjacentHTML('beforeend', `<label style="display:flex;align-items:center;gap:6px; color:var(--text-main); font-size:13px; margin-bottom:6px;"><input type="checkbox" class="ch-role-cb" value="${r.id}" style="width:14px;height:14px;"> <span style="color:${r.color};">${r.name}</span></label>`); });
-    if (el('isPrivateChannel')) el('isPrivateChannel').checked = false; rs.style.display = 'none';
-    el('createChannelModal').style.display = 'flex'; el('serverDropdown').style.display = 'none';
+    if (el('isPrivateChannel')) el('isPrivateChannel').checked = false; rs.style.display = 'none'; el('createChannelModal').style.display = 'flex'; el('serverDropdown').style.display = 'none';
 });
 
 bindClick('dropdownLeave', () => { window.leaveServer(currentServerObj.id); el('serverDropdown').style.display = 'none'; });
 bindChange('isPrivateChannel', (e) => { el('channelRolesSelect').style.display = e.target.checked ? 'block' : 'none'; });
 bindClick('addChannelBtn', () => { const btn = el('dropdownCreateChannel'); if (btn) btn.click(); });
 bindClick('closeChannelModal', () => el('createChannelModal').style.display = 'none');
+bindClick('submitChannelBtn', async () => { const name = el('newChannelName').value.trim(); if (!name) return; let perms = { everyone: { view: true, send: true }, roles: {}, users: {} }; if (el('isPrivateChannel') && el('isPrivateChannel').checked) { perms.everyone.view = false; document.querySelectorAll('.ch-role-cb:checked').forEach(cb => { perms.roles[cb.value] = { view: true, send: true }; }); } await fetch('/api/channels/create', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ server_id: currentServerObj.id, name, permissions: perms }) }); el('newChannelName').value = ''; el('createChannelModal').style.display = 'none'; });
 
-bindClick('submitChannelBtn', async () => {
-    const name = el('newChannelName').value.trim(); if (!name) return;
-    let perms = { everyone: { view: true, send: true }, roles: {}, users: {} };
-    if (el('isPrivateChannel') && el('isPrivateChannel').checked) {
-        perms.everyone.view = false;
-        document.querySelectorAll('.ch-role-cb:checked').forEach(cb => { perms.roles[cb.value] = { view: true, send: true }; });
-    }
-    await fetch('/api/channels/create', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ server_id: currentServerObj.id, name, permissions: perms }) });
-    el('newChannelName').value = ''; el('createChannelModal').style.display = 'none';
-});
-
-function syncChannelPermsFromDOM() {
-    const chEvView = el('editChEvView');
-    const chEvSend = el('editChEvSend');
-    if (chEvView) currentChannelPerms.everyone.view = chEvView.checked;
-    if (chEvSend) currentChannelPerms.everyone.send = chEvSend.checked;
-    document.querySelectorAll('.role-perm-row').forEach(row => {
-        const rId = row.dataset.rid;
-        if (!currentChannelPerms.roles) currentChannelPerms.roles = {};
-        if (!currentChannelPerms.roles[rId]) currentChannelPerms.roles[rId] = { view: true, send: true };
-        const vCb = row.querySelector('.perm-view-cb');
-        const sCb = row.querySelector('.perm-send-cb');
-        if (vCb) currentChannelPerms.roles[rId].view = vCb.checked;
-        if (sCb) currentChannelPerms.roles[rId].send = sCb.checked;
-    });
-}
-
-function renderChannelPerms() {
-    const list = el('channelPermsList'); list.innerHTML = '';
-    list.insertAdjacentHTML('beforeend', `<div class="perm-row"><span>@everyone</span><div class="perm-toggles"><label class="perm-label"><input type="checkbox" id="editChEvView" ${currentChannelPerms.everyone.view !== false ? 'checked' : ''} onchange="window.toggleChannelPriv(this)"> Видеть</label><label class="perm-label"><input type="checkbox" id="editChEvSend" ${currentChannelPerms.everyone.send !== false ? 'checked' : ''}> Писать</label></div></div>`);
-    for (let rId in currentChannelPerms.roles) {
-        const rObj = serverRolesCache.find(r => r.id == rId); if (!rObj) continue;
-        list.insertAdjacentHTML('beforeend', `<div class="perm-row role-perm-row" data-rid="${rId}"><span style="color:${rObj.color}; font-weight:bold;">${rObj.name}</span><div class="perm-toggles"><label class="perm-label"><input type="checkbox" class="perm-view-cb" ${currentChannelPerms.roles[rId].view ? 'checked' : ''}> Видеть</label><label class="perm-label"><input type="checkbox" class="perm-send-cb" ${currentChannelPerms.roles[rId].send ? 'checked' : ''}> Писать</label><span class="action-icon-small del" onclick="window.removeChPerm(${rId})">✖</span></div></div>`);
-    }
-    const sel = el('addPermSelect'); sel.innerHTML = '<option value="">+ Добавить роль</option>';
-    serverRolesCache.forEach(r => { if (!currentChannelPerms.roles[r.id]) sel.insertAdjacentHTML('beforeend', `<option value="${r.id}">${r.name}</option>`); });
-}
-
-window.toggleChannelPriv = (cb) => { syncChannelPermsFromDOM(); currentChannelPerms.everyone.view = cb.checked; renderChannelPerms(); };
-window.removeChPerm = (id) => { syncChannelPermsFromDOM(); delete currentChannelPerms.roles[id]; renderChannelPerms(); };
-
-bindClick('addPermBtn', () => {
-    const val = el('addPermSelect').value; if (!val) return;
-    syncChannelPermsFromDOM();
-    if (!currentChannelPerms.roles) currentChannelPerms.roles = {};
-    currentChannelPerms.roles[val] = { view: true, send: true };
-    renderChannelPerms();
-});
-
-window.openChannelSettings = (id, name, permsStrEncoded) => {
-    el('editChannelId').value = id; el('editChannelName').value = name;
-    const permsStr = decodeURIComponent(permsStrEncoded);
-    try { currentChannelPerms = JSON.parse(permsStr); } catch (e) { currentChannelPerms = {}; }
-    if (!currentChannelPerms.everyone) currentChannelPerms.everyone = { view: true, send: true };
-    if (!currentChannelPerms.roles) currentChannelPerms.roles = {};
-
-    const isPriv = currentChannelPerms.everyone.view === false;
-    if (el('editIsPrivateChannel')) el('editIsPrivateChannel').checked = isPriv;
-    if (el('editChannelRolesSelect')) el('editChannelRolesSelect').style.display = isPriv ? 'block' : 'none';
-
-    document.querySelectorAll('#channelSettingsModal .settings-tab').forEach(t => t.classList.remove('active')); if (el('chTabBtn-general')) el('chTabBtn-general').classList.add('active');
-    document.querySelectorAll('#channelSettingsModal .settings-tab-content').forEach(t => t.style.display = 'none'); if (el('chSettingsTab-general')) el('chSettingsTab-general').style.display = 'block';
-
-    renderChannelPerms(); el('channelSettingsModal').style.display = 'flex';
-};
-
-bindChange('editIsPrivateChannel', (e) => {
-    if (el('editChannelRolesSelect')) el('editChannelRolesSelect').style.display = e.target.checked ? 'block' : 'none';
-    syncChannelPermsFromDOM(); currentChannelPerms.everyone.view = !e.target.checked; renderChannelPerms();
-});
-
-bindClick('chTabBtn-general', () => { document.querySelectorAll('#channelSettingsModal .settings-tab').forEach(t => t.classList.remove('active')); el('chTabBtn-general').classList.add('active'); document.querySelectorAll('#channelSettingsModal .settings-tab-content').forEach(t => t.style.display = 'none'); el('chSettingsTab-general').style.display = 'block'; });
-bindClick('chTabBtn-perms', () => { document.querySelectorAll('#channelSettingsModal .settings-tab').forEach(t => t.classList.remove('active')); el('chTabBtn-perms').classList.add('active'); document.querySelectorAll('#channelSettingsModal .settings-tab-content').forEach(t => t.style.display = 'none'); el('chSettingsTab-perms').style.display = 'block'; });
-bindClick('closeChannelSettingsModal', () => el('channelSettingsModal').style.display = 'none');
-
-bindClick('saveChannelSettingsBtn', async () => {
-    const id = el('editChannelId').value; const name = el('editChannelName').value.trim(); if (!name) return;
-    syncChannelPermsFromDOM();
-    if (el('editIsPrivateChannel') && el('editIsPrivateChannel').checked) { currentChannelPerms.everyone.view = false; }
-    await fetch('/api/channels/edit', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ channel_id: id, server_id: currentServerObj.id, name, permissions: currentChannelPerms }) });
-    el('channelSettingsModal').style.display = 'none'; showToast('Канал сохранен');
-});
-
+function syncChannelPermsFromDOM() { const chEvView = el('editChEvView'); const chEvSend = el('editChEvSend'); if (chEvView) currentChannelPerms.everyone.view = chEvView.checked; if (chEvSend) currentChannelPerms.everyone.send = chEvSend.checked; document.querySelectorAll('.role-perm-row').forEach(row => { const rId = row.dataset.rid; if (!currentChannelPerms.roles) currentChannelPerms.roles = {}; if (!currentChannelPerms.roles[rId]) currentChannelPerms.roles[rId] = { view: true, send: true }; const vCb = row.querySelector('.perm-view-cb'); const sCb = row.querySelector('.perm-send-cb'); if (vCb) currentChannelPerms.roles[rId].view = vCb.checked; if (sCb) currentChannelPerms.roles[rId].send = sCb.checked; }); }
+function renderChannelPerms() { const list = el('channelPermsList'); list.innerHTML = ''; list.insertAdjacentHTML('beforeend', `<div class="perm-row"><span>@everyone</span><div class="perm-toggles"><label class="perm-label"><input type="checkbox" id="editChEvView" ${currentChannelPerms.everyone.view !== false ? 'checked' : ''} onchange="window.toggleChannelPriv(this)"> Видеть</label><label class="perm-label"><input type="checkbox" id="editChEvSend" ${currentChannelPerms.everyone.send !== false ? 'checked' : ''}> Писать</label></div></div>`); for (let rId in currentChannelPerms.roles) { const rObj = serverRolesCache.find(r => r.id == rId); if (!rObj) continue; list.insertAdjacentHTML('beforeend', `<div class="perm-row role-perm-row" data-rid="${rId}"><span style="color:${rObj.color}; font-weight:bold;">${rObj.name}</span><div class="perm-toggles"><label class="perm-label"><input type="checkbox" class="perm-view-cb" ${currentChannelPerms.roles[rId].view ? 'checked' : ''}> Видеть</label><label class="perm-label"><input type="checkbox" class="perm-send-cb" ${currentChannelPerms.roles[rId].send ? 'checked' : ''}> Писать</label><span class="action-icon-small del" onclick="window.removeChPerm(${rId})">✖</span></div></div>`); } const sel = el('addPermSelect'); sel.innerHTML = '<option value="">+ Добавить роль</option>'; serverRolesCache.forEach(r => { if (!currentChannelPerms.roles[r.id]) sel.insertAdjacentHTML('beforeend', `<option value="${r.id}">${r.name}</option>`); }); }
+window.toggleChannelPriv = (cb) => { syncChannelPermsFromDOM(); currentChannelPerms.everyone.view = cb.checked; renderChannelPerms(); }; window.removeChPerm = (id) => { syncChannelPermsFromDOM(); delete currentChannelPerms.roles[id]; renderChannelPerms(); };
+bindClick('addPermBtn', () => { const val = el('addPermSelect').value; if (!val) return; syncChannelPermsFromDOM(); if (!currentChannelPerms.roles) currentChannelPerms.roles = {}; currentChannelPerms.roles[val] = { view: true, send: true }; renderChannelPerms(); });
+window.openChannelSettings = (id, name, permsStrEncoded) => { el('editChannelId').value = id; el('editChannelName').value = name; const permsStr = decodeURIComponent(permsStrEncoded); try { currentChannelPerms = JSON.parse(permsStr); } catch (e) { currentChannelPerms = {}; } if (!currentChannelPerms.everyone) currentChannelPerms.everyone = { view: true, send: true }; if (!currentChannelPerms.roles) currentChannelPerms.roles = {}; const isPriv = currentChannelPerms.everyone.view === false; if (el('editIsPrivateChannel')) el('editIsPrivateChannel').checked = isPriv; if (el('editChannelRolesSelect')) el('editChannelRolesSelect').style.display = isPriv ? 'block' : 'none'; document.querySelectorAll('#channelSettingsModal .settings-tab').forEach(t => t.classList.remove('active')); if (el('chTabBtn-general')) el('chTabBtn-general').classList.add('active'); document.querySelectorAll('#channelSettingsModal .settings-tab-content').forEach(t => t.style.display = 'none'); if (el('chSettingsTab-general')) el('chSettingsTab-general').style.display = 'block'; renderChannelPerms(); el('channelSettingsModal').style.display = 'flex'; };
+bindChange('editIsPrivateChannel', (e) => { if (el('editChannelRolesSelect')) el('editChannelRolesSelect').style.display = e.target.checked ? 'block' : 'none'; syncChannelPermsFromDOM(); currentChannelPerms.everyone.view = !e.target.checked; renderChannelPerms(); });
+bindClick('chTabBtn-general', () => { document.querySelectorAll('#channelSettingsModal .settings-tab').forEach(t => t.classList.remove('active')); el('chTabBtn-general').classList.add('active'); document.querySelectorAll('#channelSettingsModal .settings-tab-content').forEach(t => t.style.display = 'none'); el('chSettingsTab-general').style.display = 'block'; }); bindClick('chTabBtn-perms', () => { document.querySelectorAll('#channelSettingsModal .settings-tab').forEach(t => t.classList.remove('active')); el('chTabBtn-perms').classList.add('active'); document.querySelectorAll('#channelSettingsModal .settings-tab-content').forEach(t => t.style.display = 'none'); el('chSettingsTab-perms').style.display = 'block'; }); bindClick('closeChannelSettingsModal', () => el('channelSettingsModal').style.display = 'none');
+bindClick('saveChannelSettingsBtn', async () => { const id = el('editChannelId').value; const name = el('editChannelName').value.trim(); if (!name) return; syncChannelPermsFromDOM(); if (el('editIsPrivateChannel') && el('editIsPrivateChannel').checked) { currentChannelPerms.everyone.view = false; } await fetch('/api/channels/edit', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ channel_id: id, server_id: currentServerObj.id, name, permissions: currentChannelPerms }) }); el('channelSettingsModal').style.display = 'none'; showToast('Канал сохранен'); });
 window.deleteChannel = function (channelId) { showConfirm('Удалить канал?', 'Канал и сообщения будут стерты навсегда.', 'Удалить', async () => { await fetch('/api/channels/delete', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ channel_id: channelId, server_id: currentServerObj.id }) }); }); }
 socket.on('channel_update', (data) => { if (currentServerObj && currentServerObj.id === data.server_id) window.loadServer(data.server_id); });
+function switchSettingsTab(tabName) { document.querySelectorAll('#serverSettingsModal .settings-tab-content').forEach(t => t.style.display = 'none'); document.querySelectorAll('#serverSettingsModal .settings-tab').forEach(t => t.classList.remove('active')); el(`settingsTab-${tabName}`).style.display = 'block'; el(`tabBtn-${tabName}`).classList.add('active'); }
+bindClick('tabBtn-general', () => switchSettingsTab('general')); bindClick('tabBtn-roles', () => switchSettingsTab('roles')); bindClick('tabBtn-members', () => switchSettingsTab('members'));
+function renderServerRoles() { const list = el('serverRolesList'); list.innerHTML = ''; serverRolesCache.forEach(r => { list.insertAdjacentHTML('beforeend', `<div class="role-list-item"><div class="role-pill" style="border-color:${r.color};"><div class="role-pill-color" style="background:${r.color};"></div><span style="color:${r.color};">${r.name}</span></div><span class="action-icon-small del" onclick="window.deleteRole(${r.id})">🗑</span></div>`); }); }
+function renderServerMembers() { const list = el('serverMembersList'); list.innerHTML = ''; serverMembersCache.forEach(m => { const rIds = JSON.parse(m.roles || '[]'); let rolesHtml = ''; rIds.forEach(id => { const r = serverRolesCache.find(x => x.id == id); if (r) rolesHtml += `<div class="role-pill" style="border-color:${r.color};"><div class="role-pill-color" style="background:${r.color};"></div><span style="color:${r.color};">${r.name}</span><span style="cursor:pointer; margin-left:4px;" onclick="window.toggleRole('${m.username}', ${r.id})">&times;</span></div>`; }); let allRolesSelectHtml = `<select style="background:var(--bg-main); color:white; border:1px solid var(--bg-hover); border-radius:4px; font-size:11px; padding:2px; outline:none;" onchange="window.toggleRole('${m.username}', this.value); this.value='';"><option value="">+ Выдать роль</option>`; serverRolesCache.forEach(r => { if (!rIds.includes(r.id.toString())) allRolesSelectHtml += `<option value="${r.id}">${r.name}</option>`; }); allRolesSelectHtml += `</select>`; const aHTML = m.avatar ? `<img src="${m.avatar}">` : m.username.charAt(0).toUpperCase(); list.insertAdjacentHTML('beforeend', `<div class="member-list-item"><div class="member-list-header"><div class="user-avatar-wrap" style="width:28px;height:28px;"><div class="user-avatar" style="font-size:14px;">${aHTML}</div></div><span style="font-weight:bold; color:var(--text-main); font-size:14px;">${m.display_name || m.username}</span></div><div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center;">${rolesHtml}${allRolesSelectHtml}</div></div>`); }); }
 
-function switchSettingsTab(tabName) {
-    document.querySelectorAll('#serverSettingsModal .settings-tab-content').forEach(t => t.style.display = 'none');
-    document.querySelectorAll('#serverSettingsModal .settings-tab').forEach(t => t.classList.remove('active'));
-    el(`settingsTab-${tabName}`).style.display = 'block';
-    el(`tabBtn-${tabName}`).classList.add('active');
-}
-bindClick('tabBtn-general', () => switchSettingsTab('general'));
-bindClick('tabBtn-roles', () => switchSettingsTab('roles'));
-bindClick('tabBtn-members', () => switchSettingsTab('members'));
-
-function renderServerRoles() {
-    const list = el('serverRolesList'); list.innerHTML = '';
-    serverRolesCache.forEach(r => { list.insertAdjacentHTML('beforeend', `<div class="role-list-item"><div class="role-pill" style="border-color:${r.color};"><div class="role-pill-color" style="background:${r.color};"></div><span style="color:${r.color};">${r.name}</span></div><span class="action-icon-small del" onclick="window.deleteRole(${r.id})">🗑</span></div>`); });
-}
-
-function renderServerMembers() {
-    const list = el('serverMembersList'); list.innerHTML = '';
-    serverMembersCache.forEach(m => {
-        const rIds = JSON.parse(m.roles || '[]'); let rolesHtml = '';
-        rIds.forEach(id => { const r = serverRolesCache.find(x => x.id == id); if (r) rolesHtml += `<div class="role-pill" style="border-color:${r.color};"><div class="role-pill-color" style="background:${r.color};"></div><span style="color:${r.color};">${r.name}</span><span style="cursor:pointer; margin-left:4px;" onclick="window.toggleRole('${m.username}', ${r.id})">&times;</span></div>`; });
-        let allRolesSelectHtml = `<select style="background:var(--bg-main); color:white; border:1px solid var(--bg-hover); border-radius:4px; font-size:11px; padding:2px; outline:none;" onchange="window.toggleRole('${m.username}', this.value); this.value='';"><option value="">+ Выдать роль</option>`;
-        serverRolesCache.forEach(r => { if (!rIds.includes(r.id.toString())) allRolesSelectHtml += `<option value="${r.id}">${r.name}</option>`; }); allRolesSelectHtml += `</select>`;
-        const aHTML = m.avatar ? `<img src="${m.avatar}">` : m.username.charAt(0).toUpperCase();
-        list.insertAdjacentHTML('beforeend', `<div class="member-list-item"><div class="member-list-header"><div class="user-avatar-wrap" style="width:28px;height:28px;"><div class="user-avatar" style="font-size:14px;">${aHTML}</div></div><span style="font-weight:bold; color:var(--text-main); font-size:14px;">${m.display_name || m.username}</span></div><div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center;">${rolesHtml}${allRolesSelectHtml}</div></div>`);
-    });
-}
-
-window.openServerSettings = async (srvId) => {
+// ФИКС МГНОВЕННЫХ НАСТРОЕК СЕРВЕРА
+window.openServerSettings = (srvId) => {
     if (currentServerObj && currentServerObj.id == srvId) {
-        await fetchServerData(srvId); el('editServerName').value = currentServerObj.name; el('serverIconPreview').innerHTML = currentServerObj.icon ? `<img src="${currentServerObj.icon}">` : currentServerObj.name.charAt(0);
+        el('editServerName').value = currentServerObj.name;
+        el('serverIconPreview').innerHTML = currentServerObj.icon ? `<img src="${currentServerObj.icon}">` : currentServerObj.name.charAt(0);
         if (el('serverSettingsModal').style.display !== 'flex') switchSettingsTab('general');
-        renderServerRoles(); renderServerMembers(); el('serverDropdown').style.display = 'none'; el('serverSettingsModal').style.display = 'flex';
+        renderServerRoles();
+        renderServerMembers();
+        el('serverDropdown').style.display = 'none';
+        el('serverSettingsModal').style.display = 'flex';
+
+        fetchServerData(srvId).then(() => {
+            if (el('serverSettingsModal').style.display === 'flex') {
+                renderServerRoles(); renderServerMembers();
+            }
+        });
     }
 };
-bindClick('closeSettingsModal', () => el('serverSettingsModal').style.display = 'none');
 
-let newServerIcon = '';
-bindChange('serverIconUpload', e => { const file = e.target.files[0]; if (!file) return; const reader = new FileReader(); reader.onload = ev => { newServerIcon = ev.target.result; el('serverIconPreview').innerHTML = `<img src="${newServerIcon}">`; }; reader.readAsDataURL(file); });
+bindClick('closeSettingsModal', () => el('serverSettingsModal').style.display = 'none');
+let newServerIcon = ''; bindChange('serverIconUpload', e => { const file = e.target.files[0]; if (!file) return; const reader = new FileReader(); reader.onload = ev => { newServerIcon = ev.target.result; el('serverIconPreview').innerHTML = `<img src="${newServerIcon}">`; }; reader.readAsDataURL(file); });
 bindClick('saveServerSettingsBtn', async () => { const name = el('editServerName').value.trim(); await fetch('/api/servers/edit', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ server_id: currentServerObj.id, name, icon: newServerIcon || currentServerObj.icon }) }); showToast('Настройки сохранены'); el('serverSettingsModal').style.display = 'none'; });
 socket.on('server_updated', (data) => { if (currentServerObj && currentServerObj.id == data.server_id) { window.loadServer(currentServerObj.id); if (el('serverSettingsModal').style.display === 'flex') window.openServerSettings(currentServerObj.id); } fetchServers(); });
-
-bindClick('createRoleBtn', async () => {
-    const name = el('newRoleName').value.trim(); const color = el('newRoleColor').value;
-    const cCh = el('newRoleManCh').checked; const cMsg = el('newRoleManMsg').checked;
-    if (!name) return;
-    await fetch('/api/roles/create', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ server_id: currentServerObj.id, name, color, can_manage_channels: cCh, can_manage_messages: cMsg }) });
-    el('newRoleName').value = ''; el('newRoleManCh').checked = false; el('newRoleManMsg').checked = false;
-});
+bindClick('createRoleBtn', async () => { const name = el('newRoleName').value.trim(); const color = el('newRoleColor').value; const cCh = el('newRoleManCh').checked; const cMsg = el('newRoleManMsg').checked; if (!name) return; await fetch('/api/roles/create', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ server_id: currentServerObj.id, name, color, can_manage_channels: cCh, can_manage_messages: cMsg }) }); el('newRoleName').value = ''; el('newRoleManCh').checked = false; el('newRoleManMsg').checked = false; });
 window.deleteRole = function (roleId) { showConfirm('Удалить роль?', 'Это действие нельзя отменить.', 'Удалить', async () => { await fetch('/api/roles/delete', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ role_id: roleId, server_id: currentServerObj.id }) }); }); };
 window.toggleRole = async (username, roleId) => { if (!roleId) return; const member = serverMembersCache.find(m => m.username === username); if (!member) return; let rIds = JSON.parse(member.roles || '[]'); if (rIds.includes(roleId.toString())) rIds = rIds.filter(id => id != roleId); else rIds.push(roleId.toString()); await fetch('/api/members/roles/update', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ server_id: currentServerObj.id, username, roles: rIds }) }); };
 
@@ -497,12 +320,8 @@ function updateHomeBadge() {
     for (let c in unreadCounts) { if (c !== 'general' && !c.startsWith('channel_')) total += unreadCounts[c]; }
     const hb = el('badge-home');
     if (hb) { if (total > 0) { hb.innerText = total; hb.style.display = 'block'; } else hb.style.display = 'none'; }
-
     document.title = total > 0 ? `(${total > 9 ? '9+' : total}) KittyCord` : `KittyCord`;
-    if (navigator.setAppBadge) {
-        if (total > 0) navigator.setAppBadge(total > 9 ? 9 : total).catch(console.error);
-        else navigator.clearAppBadge().catch(console.error);
-    }
+    if (navigator.setAppBadge) { if (total > 0) navigator.setAppBadge(total > 9 ? 9 : total).catch(console.error); else navigator.clearAppBadge().catch(console.error); }
 }
 
 bindClick('btnHome', () => { currentServerObj = null; el('membersPanel').style.display = 'none'; el('serverHeaderChevron').style.display = 'none'; el('btnHome').classList.add('active'); el('btnGeneral').classList.remove('active'); document.querySelectorAll('.server-icon').forEach(e => e.classList.remove('active')); el('serverChannels').style.display = 'none'; el('dmSection').style.display = 'block'; el('panelTitle').innerText = 'Главная'; openFriendsMenu(); });
@@ -516,27 +335,12 @@ window.loadChat = function (chatName, canSend = true) {
     else {
         const uData = allUsers.find(u => u.username === chatName) || { display_name: chatName };
         el('chatTitle').innerText = `ЛС: @${uData.display_name || chatName}`;
-
-        el('membersPanel').style.display = 'none';
-        currentServerObj = null;
-        document.querySelectorAll('.server-icon').forEach(e => e.classList.remove('active'));
-        if (el('btnHome')) el('btnHome').classList.add('active');
-        if (el('btnGeneral')) el('btnGeneral').classList.remove('active');
-        el('serverChannels').style.display = 'none';
-        el('dmSection').style.display = 'block';
-        el('panelTitle').innerText = 'Главная';
-        el('serverHeaderChevron').style.display = 'none';
+        el('membersPanel').style.display = 'none'; currentServerObj = null; document.querySelectorAll('.server-icon').forEach(e => e.classList.remove('active')); if (el('btnHome')) el('btnHome').classList.add('active'); if (el('btnGeneral')) el('btnGeneral').classList.remove('active'); el('serverChannels').style.display = 'none'; el('dmSection').style.display = 'block'; el('panelTitle').innerText = 'Главная'; el('serverHeaderChevron').style.display = 'none';
     }
-
     document.querySelectorAll('.channel, .dm-user').forEach(e => e.classList.remove('active'));
-    if (chatName === 'general') { const ug = el('ui-general'); if (ug) ug.classList.add('active'); }
-    else if (chatName.startsWith('channel_')) { const ui = el(`ui-${chatName}`); if (ui) ui.classList.add('active'); }
-    else { addToDMList(chatName, null, true); }
-
+    if (chatName === 'general') { const ug = el('ui-general'); if (ug) ug.classList.add('active'); } else if (chatName.startsWith('channel_')) { const ui = el(`ui-${chatName}`); if (ui) ui.classList.add('active'); } else { addToDMList(chatName, null, true); }
     el('friendsArea').style.display = 'none'; el('chatArea').style.display = 'flex'; clearBadge(chatName); lastMessageDate = null; window.cancelReply();
-
-    if (canSend) { el('chatInputArea').style.display = 'flex'; el('chatNoAccessArea').style.display = 'none'; }
-    else { el('chatInputArea').style.display = 'none'; el('chatNoAccessArea').style.display = 'block'; }
+    if (canSend) { el('chatInputArea').style.display = 'flex'; el('chatNoAccessArea').style.display = 'none'; } else { el('chatInputArea').style.display = 'none'; el('chatNoAccessArea').style.display = 'block'; }
 
     if (messagesContainer) messagesContainer.innerHTML = '<div style="display:flex; height:100%; align-items:center; justify-content:center; color:var(--text-muted); font-size:14px;">Загрузка сообщений...</div>';
     socket.emit('get_history', { username: currentUser, chatWith: currentChat });
@@ -551,14 +355,7 @@ function incrementBadge(chatId, isPing = false, avatarData = null, serverId = nu
     if (chatId === currentChat && document.hasFocus()) return;
     unreadCounts[chatId] = (unreadCounts[chatId] || 0) + 1;
     const b1 = el(`badge-${chatId}`); if (b1) { b1.innerText = unreadCounts[chatId]; b1.style.display = 'inline-block'; }
-
-    if (serverId && isPing) {
-        const sBadge = el(`badge-server_${serverId}`);
-        if (sBadge) { let c = parseInt(sBadge.innerText) || 0; sBadge.innerText = c + 1; sBadge.style.display = 'block'; }
-    } else if (chatId !== 'general' && !chatId.startsWith('channel_')) {
-        showUnreadDMBubble(chatId, avatarData);
-        const b2 = el(`quick-badge-${chatId}`); if (b2) { b2.innerText = unreadCounts[chatId]; b2.style.display = 'block'; }
-    }
+    if (serverId && isPing) { const sBadge = el(`badge-server_${serverId}`); if (sBadge) { let c = parseInt(sBadge.innerText) || 0; sBadge.innerText = c + 1; sBadge.style.display = 'block'; } } else if (chatId !== 'general' && !chatId.startsWith('channel_')) { showUnreadDMBubble(chatId, avatarData); const b2 = el(`quick-badge-${chatId}`); if (b2) { b2.innerText = unreadCounts[chatId]; b2.style.display = 'block'; } }
     updateHomeBadge(); playPingSound();
 
     if (!document.hasFocus() && Notification.permission === "granted" && fullMsg) {
@@ -569,13 +366,7 @@ function incrementBadge(chatId, isPing = false, avatarData = null, serverId = nu
         new Notification(title, { body: bodyText, icon: fullMsg.avatar || avatarData || '' });
     }
 }
-
-function clearBadge(chatId) {
-    unreadCounts[chatId] = 0; const b1 = el(`badge-${chatId}`); if (b1) { b1.innerText = '0'; b1.style.display = 'none'; }
-    if (chatId !== 'general' && !chatId.startsWith('channel_')) removeUnreadDMBubble(chatId);
-    if (currentServerObj && currentChat.startsWith('channel_')) { const sBadge = el(`badge-server_${currentServerObj.id}`); if (sBadge) { sBadge.innerText = '0'; sBadge.style.display = 'none'; } }
-    updateHomeBadge();
-}
+function clearBadge(chatId) { unreadCounts[chatId] = 0; const b1 = el(`badge-${chatId}`); if (b1) { b1.innerText = '0'; b1.style.display = 'none'; } if (chatId !== 'general' && !chatId.startsWith('channel_')) removeUnreadDMBubble(chatId); if (currentServerObj && currentChat.startsWith('channel_')) { const sBadge = el(`badge-server_${currentServerObj.id}`); if (sBadge) { sBadge.innerText = '0'; sBadge.style.display = 'none'; } } updateHomeBadge(); }
 
 document.querySelectorAll('.friends-tabs .friend-tab').forEach(tab => { tab.onclick = () => { document.querySelectorAll('.friends-tabs .friend-tab').forEach(t => t.classList.remove('active')); tab.classList.add('active'); document.querySelectorAll('.friend-tab-content').forEach(c => c.style.display = 'none'); el(`tab-${tab.dataset.tab}`).style.display = 'block'; }; });
 async function fetchFriends() { const res = await fetch(`/api/friends/${currentUser}`); if (!res.ok) return; const data = await res.json(); const allC = el('friendsListContainer'), pendC = el('pendingListContainer'); allC.innerHTML = ''; pendC.innerHTML = ''; let pendingCount = 0; data.friends.forEach(f => { const isReq = f.requester === currentUser; const other = isReq ? f.receiver : f.requester; const uData = allUsers.find(u => u.username === other) || { avatar: '', display_name: '' }; const avatarHTML = uData.avatar ? `<img src="${uData.avatar}">` : other.charAt(0).toUpperCase(); const dName = uData.display_name || other; if (f.status === 'accepted') { allC.insertAdjacentHTML('beforeend', `<div class="friend-item" onclick="window.loadChat('${other}')"><div class="user-avatar-wrap" style="width:32px;height:32px;"><div class="user-avatar">${avatarHTML}</div></div><div class="friend-item-info"><span class="friend-item-name">${dName}</span><span class="friend-item-status">В сети</span></div><button class="friend-action-btn msg" onclick="event.stopPropagation(); window.loadChat('${other}')">💬</button></div>`); } else if (f.status === 'pending') { if (!isReq) pendingCount++; const btns = isReq ? `<button class="friend-action-btn reject" onclick="window.friendAction('${currentUser}','${other}','reject')">✖</button>` : `<button class="friend-action-btn accept" onclick="window.friendAction('${other}','${currentUser}','accept')">✔</button><button class="friend-action-btn reject" onclick="window.friendAction('${other}','${currentUser}','reject')">✖</button>`; pendC.insertAdjacentHTML('beforeend', `<div class="friend-item"><div class="user-avatar-wrap" style="width:32px;height:32px;"><div class="user-avatar">${avatarHTML}</div></div><div class="friend-item-info"><span class="friend-item-name">${dName}</span><span class="friend-item-status">${isReq ? 'Исходящий запрос' : 'Входящий запрос'}</span></div>${btns}</div>`); } }); const badge = el('pendingBadge'); if (pendingCount > 0) { badge.innerText = pendingCount; badge.style.display = 'inline-block'; } else badge.style.display = 'none'; pendingFriendRequests = pendingCount; updateHomeBadge(); if (allC.innerHTML === '') allC.innerHTML = '<p class="subtext">Тут пока пусто.</p>'; if (pendC.innerHTML === '') pendC.innerHTML = '<p class="subtext">Нет ожидающих запросов.</p>'; }
@@ -585,23 +376,53 @@ socket.on('friend_update', (data) => { if (data.user === currentUser) fetchFrien
 
 bindClick('closeModal', () => el('profileModal').style.display = 'none');
 
-window.openProfile = async (username, defaultAvatar) => {
-    const isMe = username === currentUser; const data = await (await fetch(`/api/user/${username}`)).json(); const u = data.success ? data : {};
-    el('profileDisplayName').value = u.display_name || username; el('profileUsername').innerText = `@${username}`; el('profilePronouns').value = u.pronouns || ''; el('profileCustomStatus').value = u.custom_status || ''; el('profileActivity').value = u.activity || ''; el('profileBio').value = u.bio || ''; el('profileSocials').value = u.social_links || '';
-    if (u.reg_date) { const d = new Date(u.reg_date.replace(' ', 'T') + 'Z'); el('profileRegDate').innerText = `${d.getDate()}.${d.getMonth() + 1}.${d.getFullYear()}`; } else el('profileRegDate').innerText = 'Недавно';
-    updateAvatarDisplay('modalAvatarPreview', u.avatar || defaultAvatar, username); const bannerEl = el('modalBanner');
-    if (u.banner_image && u.banner_image.startsWith('data:image')) { bannerEl.style.backgroundImage = `url(${u.banner_image})`; bannerEl.style.backgroundColor = 'transparent'; } else { bannerEl.style.backgroundImage = 'none'; bannerEl.style.backgroundColor = u.banner_color || 'var(--accent)'; }
-    ['profileDisplayName', 'profilePronouns', 'profileCustomStatus', 'profileActivity', 'profileBio', 'profileSocials'].forEach(id => el(id).disabled = !isMe);
-    el('profilePronouns').style.display = (!isMe && !u.pronouns) ? 'none' : 'inline-block'; el('statusContainer').style.display = (!isMe && !u.custom_status) ? 'none' : 'flex'; el('activityContainer').style.display = (!isMe && !u.activity) ? 'none' : 'flex'; el('bioContainer').style.display = (!isMe && !u.bio) ? 'none' : 'block'; el('socialsContainer').style.display = (!isMe && !u.social_links) ? 'none' : 'block';
+// ФИКС МГНОВЕННОГО ОТКРЫТИЯ ПРОФИЛЯ
+window.openProfile = (username, defaultAvatar) => {
+    const isMe = username === currentUser;
+    let u = allUsers.find(x => x.username === username) || { display_name: username, avatar: defaultAvatar };
+    if (isMe) Object.assign(u, myProfileData, { avatar: currentAvatar });
+
+    const renderProf = (userData) => {
+        el('profileDisplayName').value = userData.display_name || username;
+        el('profileUsername').innerText = `@${username}`;
+        el('profilePronouns').value = userData.pronouns || '';
+        el('profileCustomStatus').value = userData.custom_status || '';
+        el('profileActivity').value = userData.activity || '';
+        el('profileBio').value = userData.bio || '';
+        el('profileSocials').value = userData.social_links || '';
+
+        if (userData.reg_date) {
+            const d = new Date(userData.reg_date.replace(' ', 'T') + 'Z');
+            el('profileRegDate').innerText = `${d.getDate()}.${d.getMonth() + 1}.${d.getFullYear()}`;
+        } else el('profileRegDate').innerText = 'Недавно';
+
+        updateAvatarDisplay('modalAvatarPreview', userData.avatar || defaultAvatar, username);
+        const bannerEl = el('modalBanner');
+        if (userData.banner_image && userData.banner_image.startsWith('data:image')) {
+            bannerEl.style.backgroundImage = `url(${userData.banner_image})`;
+            bannerEl.style.backgroundColor = 'transparent';
+        } else {
+            bannerEl.style.backgroundImage = 'none';
+            bannerEl.style.backgroundColor = userData.banner_color || 'var(--accent)';
+        }
+
+        ['profileDisplayName', 'profilePronouns', 'profileCustomStatus', 'profileActivity', 'profileBio', 'profileSocials'].forEach(id => el(id).disabled = !isMe);
+        el('profilePronouns').style.display = (!isMe && !userData.pronouns) ? 'none' : 'inline-block';
+        el('statusContainer').style.display = (!isMe && !userData.custom_status) ? 'none' : 'flex';
+        el('activityContainer').style.display = (!isMe && !userData.activity) ? 'none' : 'flex';
+        el('bioContainer').style.display = (!isMe && !userData.bio) ? 'none' : 'block';
+        el('socialsContainer').style.display = (!isMe && !userData.social_links) ? 'none' : 'block';
+    };
+
+    renderProf(u);
+
     el('changeAvatarBtn').style.display = isMe ? 'flex' : 'none'; el('changeBannerBtn').style.display = isMe ? 'flex' : 'none'; el('logoutBtn').style.display = isMe ? 'block' : 'none'; el('saveBioBtn').style.display = isMe ? 'block' : 'none'; el('dmBtn').style.display = isMe ? 'none' : 'block';
     el('dmBtn').onclick = () => { el('profileModal').style.display = 'none'; window.loadChat(username); };
 
     const prList = el('profileRolesList'); prList.innerHTML = '';
     if (currentServerObj && serverMembersCache.length > 0) {
         const mem = serverMembersCache.find(m => m.username === username);
-        let memRoles = [];
-        let iCanManageRoles = (currentServerObj.owner === currentUser);
-
+        let memRoles = []; let iCanManageRoles = (currentServerObj.owner === currentUser);
         if (mem && mem.roles) {
             memRoles = JSON.parse(mem.roles);
             memRoles.forEach(id => {
@@ -612,7 +433,6 @@ window.openProfile = async (username, defaultAvatar) => {
                 }
             });
         }
-
         if (iCanManageRoles) {
             let addRoleHtml = `<div style="margin-top: 8px;"><select style="background:var(--bg-servers); color:white; border:1px solid var(--bg-hover); border-radius:4px; font-size:12px; padding:4px; outline:none; cursor:pointer;" onchange="window.toggleRole('${username}', this.value); this.value=''; setTimeout(()=>window.openProfile('${username}', '${defaultAvatar}'), 300);"><option value="">+ Выдать роль</option>`;
             serverRolesCache.forEach(r => { if (!memRoles.includes(r.id.toString())) addRoleHtml += `<option value="${r.id}">${r.name}</option>`; });
@@ -621,7 +441,14 @@ window.openProfile = async (username, defaultAvatar) => {
         }
     }
     el('profileModal').style.display = 'flex';
+
+    fetch(`/api/user/${username}`).then(r => r.json()).then(data => {
+        if (data.success && el('profileModal').style.display === 'flex' && el('profileUsername').innerText === `@${username}`) {
+            renderProf(data);
+        }
+    }).catch(() => { });
 };
+
 bindChange('avatarUpload', e => { const file = e.target.files[0]; if (!file) return; const reader = new FileReader(); reader.onload = ev => { currentAvatar = ev.target.result; updateAvatarDisplay('modalAvatarPreview', currentAvatar, currentUser); }; reader.readAsDataURL(file); });
 bindChange('bannerUpload', e => { const file = e.target.files[0]; if (!file) return; const reader = new FileReader(); reader.onload = ev => { myProfileData.banner_image = ev.target.result; el('modalBanner').style.backgroundImage = `url(${myProfileData.banner_image})`; }; reader.readAsDataURL(file); });
 bindClick('saveBioBtn', async () => { const p = { username: currentUser, avatar: currentAvatar, banner_color: myProfileData.banner_color, banner_image: myProfileData.banner_image, display_name: el('profileDisplayName').value.trim(), pronouns: el('profilePronouns').value.trim(), custom_status: el('profileCustomStatus').value.trim(), activity: el('profileActivity').value.trim(), bio: el('profileBio').value.trim(), social_links: el('profileSocials').value.trim() }; await fetch('/api/profile', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(p) }); showToast('Профиль сохранен!'); });
@@ -738,6 +565,8 @@ function appendMessage(msg, isNew = false) {
     let replyHTML = msg.reply_author ? `<div class="reply-badge">Ответ <span style="font-weight:bold;color:var(--text-main);">${msg.reply_author}</span>: ${msg.reply_text.substring(0, 30)}</div>` : '';
     let pinHTML = msg.is_pinned ? `<div class="pin-badge" style="font-size:10px; color:var(--accent); font-weight:bold; margin-bottom:4px;">📌 Закреплено</div>` : '';
 
+    const tempClass = msg.isTemp ? 'temp-msg' : '';
+
     let isPinged = false;
     if (safeContent) {
         if (safeContent.includes('@' + currentUser) || safeContent.includes('@everyone') || safeContent.includes('@here')) isPinged = true;
@@ -748,10 +577,10 @@ function appendMessage(msg, isNew = false) {
     const isGrouped = (lastSender === msg.sender && msg.type === 'text' && !msg.reply_author && !msg.is_pinned);
 
     if (isGrouped) {
-        messagesContainer.insertAdjacentHTML('beforeend', `<div class="message-grouped-item ${mentionClass}" id="msg-${msg.id}" data-sender="${msg.sender}" data-pinned="${msg.is_pinned ? '1' : '0'}" style="${animStyle}"><span class="message-grouped-time">${timeStr}</span><div class="message-grouped-text"><div class="message-text-wrapper">${cHTML}</div><div class="reactions-wrapper">${reactionsHTML}</div></div></div>`);
+        messagesContainer.insertAdjacentHTML('beforeend', `<div class="message-grouped-item ${mentionClass} ${tempClass}" id="msg-${msg.id}" data-sender="${msg.sender}" data-pinned="${msg.is_pinned ? '1' : '0'}" style="${animStyle}"><span class="message-grouped-time">${timeStr}</span><div class="message-grouped-text"><div class="message-text-wrapper">${cHTML}</div><div class="reactions-wrapper">${reactionsHTML}</div></div></div>`);
     } else {
         const aHTML = (msg.avatar && msg.avatar.startsWith('data:image')) ? `<img src="${msg.avatar}">` : msg.sender.charAt(0).toUpperCase();
-        messagesContainer.insertAdjacentHTML('beforeend', `<div class="message-group ${mentionClass}" id="msg-${msg.id}" data-sender="${msg.sender}" data-pinned="${msg.is_pinned ? '1' : '0'}" style="${animStyle}"><div class="message-avatar-wrap" onclick="window.openProfile('${msg.sender}', '${msg.avatar}')"><div class="user-avatar">${aHTML}</div></div><div class="message-content">${pinHTML}${replyHTML}<div class="message-header"><span class="message-author" style="color:${roleColor};" onclick="window.openProfile('${msg.sender}', '${msg.avatar}')">${aName}</span><span class="message-time">${timeStr}</span></div><div class="message-text-wrapper">${cHTML}</div><div class="reactions-wrapper">${reactionsHTML}</div></div></div>`);
+        messagesContainer.insertAdjacentHTML('beforeend', `<div class="message-group ${mentionClass} ${tempClass}" id="msg-${msg.id}" data-sender="${msg.sender}" data-pinned="${msg.is_pinned ? '1' : '0'}" style="${animStyle}"><div class="message-avatar-wrap" onclick="window.openProfile('${msg.sender}', '${msg.avatar}')"><div class="user-avatar">${aHTML}</div></div><div class="message-content">${pinHTML}${replyHTML}<div class="message-header"><span class="message-author" style="color:${roleColor};" onclick="window.openProfile('${msg.sender}', '${msg.avatar}')">${aName}</span><span class="message-time">${timeStr}</span></div><div class="message-text-wrapper">${cHTML}</div><div class="reactions-wrapper">${reactionsHTML}</div></div></div>`);
     }
     lastSender = (msg.type === 'text' && !msg.reply_author && !msg.is_pinned) ? msg.sender : null;
     if (isNew) setTimeout(() => messagesContainer.scrollTop = messagesContainer.scrollHeight, 10);
@@ -768,6 +597,11 @@ socket.on('load_history', (m) => {
 });
 
 socket.on('receive_message', (msg) => {
+    if (msg.sender === currentUser) {
+        const temps = document.querySelectorAll('.temp-msg');
+        if (temps.length > 0) temps[0].remove();
+    }
+
     if (currentChat === msg.recipient || currentChat === msg.sender || (currentChat === 'general' && msg.recipient === 'general')) {
         appendMessage(msg, true);
     } else {
@@ -783,7 +617,16 @@ socket.on('receive_message', (msg) => {
 socket.on('message_deleted', (data) => { const elem = el(`msg-${data.id}`); if (elem) elem.remove(); if (ctxMenu) ctxMenu.style.display = 'none'; });
 socket.on('message_updated', (msg) => { appendMessage(msg, false); });
 
-function sendMessage() { const text = msgInput.value.trim(); if (!text) return; socket.emit('send_message', { sender: currentUser, recipient: currentChat, server_id: currentServerObj ? currentServerObj.id : null, content: text, type: 'text', reply_author: replyingTo?.author || '', reply_text: replyingTo?.text || '' }); msgInput.value = ''; if (el('mentionDropdown')) el('mentionDropdown').style.display = 'none'; if (el('emojiDropdown')) el('emojiDropdown').style.display = 'none'; window.cancelReply(); }
+function sendMessage() {
+    const text = msgInput.value.trim(); if (!text) return;
+    const tempId = 'temp-' + Date.now();
+    const tempMsg = { id: tempId, sender: currentUser, display_name: myProfileData.display_name || currentUser, avatar: currentAvatar, content: text, type: 'text', timestamp: new Date(), isTemp: true, reply_author: replyingTo?.author || '', reply_text: replyingTo?.text || '' };
+    appendMessage(tempMsg, true);
+
+    socket.emit('send_message', { sender: currentUser, recipient: currentChat, server_id: currentServerObj ? currentServerObj.id : null, content: text, type: 'text', reply_author: replyingTo?.author || '', reply_text: replyingTo?.text || '' });
+    msgInput.value = ''; if (el('mentionDropdown')) el('mentionDropdown').style.display = 'none'; if (el('emojiDropdown')) el('emojiDropdown').style.display = 'none'; window.cancelReply();
+}
+
 bindClick('sendBtn', sendMessage); const renderEmojis = () => { if (!el('emojiDropdown')) return; el('emojiDropdown').innerHTML = ''; defaultEmojis.forEach(e => { const span = document.createElement('span'); span.className = 'emoji-item'; span.innerText = e; span.onclick = () => { msgInput.value += e; msgInput.focus(); el('emojiDropdown').style.display = 'none'; }; el('emojiDropdown').appendChild(span); }); }; renderEmojis();
 bindClick('emojiBtn', (e) => { e.stopPropagation(); if (el('emojiDropdown')) el('emojiDropdown').style.display = el('emojiDropdown').style.display === 'none' ? 'flex' : 'none'; });
 
@@ -852,26 +695,30 @@ function selectMention(u) {
 }
 
 async function uploadFile(file, type) {
-    const formData = new FormData();
-    formData.append('file', file);
+    const formData = new FormData(); formData.append('file', file);
 
-    showToast('⏳ Отправка медиа...', false);
-    msgInput.disabled = true;
-    msgInput.placeholder = 'Отправляем файл...';
+    const tempId = 'temp-' + Date.now();
+    if (type === 'image' || type === 'video' || type === 'audio') {
+        const localUrl = URL.createObjectURL(file);
+        const tempMsg = { id: tempId, sender: currentUser, display_name: myProfileData.display_name || currentUser, avatar: currentAvatar, content: localUrl, type: type, timestamp: new Date(), isTemp: true, reply_author: replyingTo?.author || '', reply_text: replyingTo?.text || '' };
+        appendMessage(tempMsg, true);
+    }
 
+    msgInput.disabled = true; msgInput.placeholder = 'Отправляем...';
     try {
         const res = await fetch('/api/upload', { method: 'POST', body: formData });
         const data = await res.json();
         if (data.success) {
             socket.emit('send_message', { sender: currentUser, recipient: currentChat, server_id: currentServerObj ? currentServerObj.id : null, content: data.url, type: type, reply_author: replyingTo?.author || '', reply_text: replyingTo?.text || '' });
-            showToast('✅ Успешно!');
-        } else { showToast('Ошибка загрузки файла!', true); }
-    } catch (e) { showToast('Сервер не отвечает', true); }
-
-    msgInput.disabled = false;
-    msgInput.placeholder = 'Написать...';
-    msgInput.focus();
-    window.cancelReply();
+        } else {
+            showToast('Ошибка загрузки файла!', true);
+            const tm = el(`msg-${tempId}`); if (tm) tm.remove();
+        }
+    } catch (e) {
+        showToast('Сервер не отвечает', true);
+        const tm = el(`msg-${tempId}`); if (tm) tm.remove();
+    }
+    msgInput.disabled = false; msgInput.placeholder = 'Написать...'; msgInput.focus(); window.cancelReply();
 }
 
 bindChange('fileInput', function (e) { const file = e.target.files[0]; if (!file) return; let type = 'text'; if (file.type.startsWith('image/')) type = 'image'; else if (file.type.startsWith('video/')) type = 'video'; else if (file.type.startsWith('audio/')) type = 'audio'; uploadFile(file, type); });
@@ -899,13 +746,9 @@ document.addEventListener('contextmenu', e => {
     let html = '';
     const menu = el('customContextMenu'); if (!menu) return;
 
-    let iCanManageMessages = false;
-    let iCanManageChannels = false;
+    let iCanManageMessages = false; let iCanManageChannels = false;
     if (currentServerObj && currentServerObj.owner === currentUser) { iCanManageMessages = true; iCanManageChannels = true; }
-    else if (currentServerObj) {
-        const myRoles = getUserRoles(currentUser);
-        myRoles.forEach(rId => { const r = serverRolesCache.find(x => x.id == rId); if (r) { if (r.can_manage_channels) iCanManageChannels = true; if (r.can_manage_messages) iCanManageMessages = true; } });
-    }
+    else if (currentServerObj) { const myRoles = getUserRoles(currentUser); myRoles.forEach(rId => { const r = serverRolesCache.find(x => x.id == rId); if (r) { if (r.can_manage_channels) iCanManageChannels = true; if (r.can_manage_messages) iCanManageMessages = true; } }); }
 
     if (e.target === msgInput && msgInput.selectionStart !== msgInput.selectionEnd) {
         e.preventDefault();
@@ -914,10 +757,8 @@ document.addEventListener('contextmenu', e => {
     else if (e.target.closest('.message-group') || e.target.closest('.message-grouped-item')) {
         e.preventDefault();
         const msgEl = e.target.closest('.message-group') || e.target.closest('.message-grouped-item');
-        const isMine = msgEl.dataset.sender === currentUser;
-        const msgId = msgEl.id.split('-')[1];
-        const author = msgEl.querySelector('.message-author')?.innerText || lastSender;
-        const isPinned = msgEl.dataset.pinned === '1';
+        const isMine = msgEl.dataset.sender === currentUser; const msgId = msgEl.id.split('-')[1];
+        const author = msgEl.querySelector('.message-author')?.innerText || lastSender; const isPinned = msgEl.dataset.pinned === '1';
 
         const rawText = msgEl.querySelector('.message-text')?.innerText || '';
         const safeTextToCopy = rawText.replace(/'/g, "\\'").replace(/\n/g, "\\n");
