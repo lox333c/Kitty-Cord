@@ -41,16 +41,19 @@ const db = createClient({
 });
 
 async function initDB() {
-    await db.execute(`DROP TABLE IF EXISTS messages`);
-
-    await db.execute(`CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE, password TEXT, avatar TEXT DEFAULT '', bio TEXT DEFAULT '', banner_color TEXT DEFAULT '#FF4DA6', banner_image TEXT DEFAULT '', display_name TEXT DEFAULT '', custom_status TEXT DEFAULT '', activity TEXT DEFAULT '', social_links TEXT DEFAULT '', pronouns TEXT DEFAULT '', reg_date DATETIME DEFAULT CURRENT_TIMESTAMP)`);
-    await db.execute(`CREATE TABLE IF NOT EXISTS messages (id INTEGER PRIMARY KEY AUTOINCREMENT, sender TEXT, recipient TEXT, content TEXT, type TEXT DEFAULT 'text', reply_author TEXT DEFAULT '', reply_text TEXT DEFAULT '', is_pinned BOOLEAN DEFAULT 0, reactions TEXT DEFAULT '{}', timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)`);
-    await db.execute(`CREATE TABLE IF NOT EXISTS friends (id INTEGER PRIMARY KEY AUTOINCREMENT, requester TEXT, receiver TEXT, status TEXT DEFAULT 'pending')`);
-    await db.execute(`CREATE TABLE IF NOT EXISTS servers (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, icon TEXT DEFAULT '', banner TEXT DEFAULT '', owner TEXT, invite_code TEXT UNIQUE)`);
-    await db.execute(`CREATE TABLE IF NOT EXISTS server_members (server_id INTEGER, username TEXT, roles TEXT DEFAULT '[]')`);
-    await db.execute(`CREATE TABLE IF NOT EXISTS channels (id INTEGER PRIMARY KEY AUTOINCREMENT, server_id INTEGER, name TEXT, permissions TEXT DEFAULT '{}')`);
-    await db.execute(`CREATE TABLE IF NOT EXISTS roles (id INTEGER PRIMARY KEY AUTOINCREMENT, server_id INTEGER, name TEXT, color TEXT, can_manage_channels BOOLEAN DEFAULT 0, can_manage_messages BOOLEAN DEFAULT 0)`);
-    console.log("База данных Turso подключена и готова!");
+    try {
+        // Таблицы создаются только если их нет. Никаких удалений истории!
+        await db.execute(`CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE, password TEXT, avatar TEXT DEFAULT '', bio TEXT DEFAULT '', banner_color TEXT DEFAULT '#FF4DA6', banner_image TEXT DEFAULT '', display_name TEXT DEFAULT '', custom_status TEXT DEFAULT '', activity TEXT DEFAULT '', social_links TEXT DEFAULT '', pronouns TEXT DEFAULT '', reg_date DATETIME DEFAULT CURRENT_TIMESTAMP)`);
+        await db.execute(`CREATE TABLE IF NOT EXISTS messages (id INTEGER PRIMARY KEY AUTOINCREMENT, sender TEXT, recipient TEXT, content TEXT, type TEXT DEFAULT 'text', reply_author TEXT DEFAULT '', reply_text TEXT DEFAULT '', is_pinned BOOLEAN DEFAULT 0, reactions TEXT DEFAULT '{}', timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)`);
+        await db.execute(`CREATE TABLE IF NOT EXISTS friends (id INTEGER PRIMARY KEY AUTOINCREMENT, requester TEXT, receiver TEXT, status TEXT DEFAULT 'pending')`);
+        await db.execute(`CREATE TABLE IF NOT EXISTS servers (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, icon TEXT DEFAULT '', banner TEXT DEFAULT '', owner TEXT, invite_code TEXT UNIQUE)`);
+        await db.execute(`CREATE TABLE IF NOT EXISTS server_members (server_id INTEGER, username TEXT, roles TEXT DEFAULT '[]')`);
+        await db.execute(`CREATE TABLE IF NOT EXISTS channels (id INTEGER PRIMARY KEY AUTOINCREMENT, server_id INTEGER, name TEXT, permissions TEXT DEFAULT '{}')`);
+        await db.execute(`CREATE TABLE IF NOT EXISTS roles (id INTEGER PRIMARY KEY AUTOINCREMENT, server_id INTEGER, name TEXT, color TEXT, can_manage_channels BOOLEAN DEFAULT 0, can_manage_messages BOOLEAN DEFAULT 0)`);
+        console.log("База данных Turso подключена и готова!");
+    } catch (error) {
+        console.error("Ошибка при инициализации БД:", error);
+    }
 }
 
 // --- 3. API МАРШРУТЫ (С ПРЕДОХРАНИТЕЛЯМИ) ---
@@ -337,7 +340,6 @@ io.on('connection', (socket) => {
 });
 
 // --- 5. БЕЗОПАСНЫЙ ЗАПУСК СЕРВЕРА ---
-// Ждем, пока создадутся таблицы, и только потом открываем двери для пользователей
 initDB().then(() => {
     const PORT = process.env.PORT || 3000;
     server.listen(PORT, () => console.log(`KittyCord server running on port ${PORT}`));
